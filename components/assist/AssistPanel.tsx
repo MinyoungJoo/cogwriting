@@ -41,10 +41,8 @@ export default function AssistPanel() {
 
         try {
             const payload = {
-                current_phase: 'planning', // Default or get from store
-                is_stuck: false,
-                stuck_duration: 0,
-                state_history: [],
+                strategy_id: potentialStrategy?.id || 'CHAT_DEFAULT',
+                system_instruction: potentialStrategy?.systemInstruction || 'You are a helpful writing assistant. Respond in Korean.',
                 writing_context: content,
                 trigger_reason: 'USER_PROMPT',
                 user_prompt: input

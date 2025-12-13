@@ -62,7 +62,13 @@ export class MonitorAgent {
 
         // Update Key History
         const review_keys = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
-        const keyType = review_keys.includes(event_code) ? 'EDIT' : 'TYPE';
+        let keyType = 'TYPE';
+        if (review_keys.includes(event_code)) {
+            keyType = 'EDIT';
+        } else if (event_code === 'Enter') {
+            keyType = 'ENTER';
+        }
+
         this.key_history.push(keyType);
         if (this.key_history.length > this.WINDOW_SIZE) {
             this.key_history.shift();
@@ -141,20 +147,35 @@ export class MonitorAgent {
 
     private calculate_phase(): Phase {
         const doc_length = this.current_text.length;
-        const wpm = this.getWpm();
+        const cpm = this.getCpm();
+        const pause_duration = this.getPauseDuration();
 
         const edit_count = this.key_history.filter(k => k === 'EDIT').length;
+        const enter_count = this.key_history.filter(k => k === 'ENTER').length;
         const total_count = this.key_history.length;
+
         const edit_ratio = total_count > 0 ? (edit_count / total_count) : 0;
+        const enter_rate = total_count > 0 ? (enter_count / total_count) : 0;
 
-        if (doc_length < 30) return 'Planning';
+        // 1. Planning Phase
+        // DocLength < 50 AND (Pause > 5s OR EnterKeyRate > 0.3)
+        if (doc_length < 50) {
+            if (pause_duration > 5 || enter_rate > 0.3) {
+                return 'Planning';
+            }
+            // If typing fast at start, treat as Translating
+            return 'Translating';
+        }
 
-        const is_cursor_back = (doc_length - this.cursor_index) > 10;
+        // 2. Reviewing vs Translating (DocLength >= 50)
+        const is_cursor_back = (doc_length - this.cursor_index) > 20; // Cursor moved up significantly
 
-        if (doc_length >= 60 && (wpm < 20 || is_cursor_back || edit_ratio > 0.25)) {
+        // Reviewing Rules: CPM < 100 OR EditRatio > 0.3 OR Cursor moved up
+        if (cpm < 100 || edit_ratio > 0.3 || is_cursor_back) {
             return 'Reviewing';
         }
 
+        // Default to Translating (covers CPM > 150, EditRatio < 0.2, Cursor at end)
         return 'Translating';
     }
 
@@ -188,18 +209,18 @@ export class MonitorAgent {
 
     // Getters for UI
     public getPhase() { return this.current_phase; }
-    public getCognitiveState() { return this.current_state; } // New getter
+    public getCognitiveState() { return this.current_state; }
 
-    public getWpm() {
+    public getCpm() {
         const now = Date.now();
         const minutes = (now - this.start_time) / 60000;
         if (minutes < 0.1) return 0;
-        return (this.total_chars_typed / 3.0) / minutes;
+        return this.total_chars_typed / minutes;
     }
 
     public getActionHistory() { return this.action_history; }
     public getDocLength() { return this.current_text.length; }
-    public getPauseDuration() { return (Date.now() / 1000) - this.last_action_time; }
+    public getPauseDuration() { return Math.floor((Date.now() / 1000) - this.last_action_time); }
     public getCursorPos() { return this.cursor_index; }
     public getEditRatio() {
         const edit_count = this.key_history.filter(k => k === 'EDIT').length;

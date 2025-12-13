@@ -4,13 +4,13 @@ import useStore from '@/store/useStore';
 import { Activity, AlertCircle, Clock } from 'lucide-react';
 
 export default function MonitorPanel() {
-    const { wpm, phase, cognitiveState, actionHistory, docLength, pauseDuration, cursorPos, editRatio } = useStore();
+    const { cpm, phase, cognitiveState, actionHistory, docLength, pauseDuration, cursorPos, editRatio } = useStore();
 
     return (
         <div className="w-[300px] bg-gray-900 text-white p-4 flex flex-col gap-6 font-mono text-sm border-r border-gray-800">
             <div>
                 <h1 className="text-xl font-bold text-blue-400 mb-1">Monitoring Agent</h1>
-
+                <div className="text-xs text-gray-500">System 1 & 2 Integration</div>
             </div>
 
             {/* Writing State */}
@@ -35,8 +35,8 @@ export default function MonitorPanel() {
                 <h2 className="text-gray-400 text-xs uppercase tracking-wider mb-2">Metrics</h2>
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <div className="text-gray-500 text-[10px]">WPM</div>
-                        <div className="text-xl font-bold">{Math.round(wpm)}</div>
+                        <div className="text-gray-500 text-[10px]">CPM</div>
+                        <div className="text-xl font-bold">{Math.round(cpm)}</div>
                     </div>
                     <div>
                         <div className="text-gray-500 text-[10px]">DOC LENGTH</div>
@@ -45,7 +45,7 @@ export default function MonitorPanel() {
                     <div>
                         <div className="text-gray-500 text-[10px]">PAUSE (s)</div>
                         <div className={`text-xl font-bold ${pauseDuration > 2 ? 'text-yellow-400' : 'text-white'}`}>
-                            {pauseDuration.toFixed(1)}
+                            {pauseDuration}
                         </div>
                     </div>
                     <div>

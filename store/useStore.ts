@@ -17,7 +17,7 @@ interface ChatMessage {
 interface AppState {
     keystrokes: Keystroke[];
     content: string;
-    wpm: number;
+    cpm: number;
     phase: Phase;
     cognitiveState: CognitiveState; // Replaces isStuck
     actionHistory: Array<{ time: number; event_code: string }>;
@@ -38,7 +38,7 @@ interface AppState {
 
     addKeystroke: (k: Keystroke) => void;
     setContent: (c: string) => void;
-    setWpm: (w: number) => void;
+    setCpm: (w: number) => void;
     setPhase: (p: Phase) => void;
     setCognitiveState: (s: CognitiveState) => void;
     setActionHistory: (h: Array<{ time: number; event_code: string }>) => void;
@@ -57,7 +57,7 @@ interface AppState {
 const useStore = create<AppState>((set, get) => ({
     keystrokes: [],
     content: '',
-    wpm: 0,
+    cpm: 0,
     phase: 'Planning',
     cognitiveState: 'Flow',
     actionHistory: [],
@@ -76,7 +76,7 @@ const useStore = create<AppState>((set, get) => ({
 
     addKeystroke: (k) => set((state) => ({ keystrokes: [...state.keystrokes, k] })),
     setContent: (c) => set({ content: c }),
-    setWpm: (w) => set({ wpm: w }),
+    setCpm: (w) => set({ cpm: w }),
     setPhase: (p) => set({ phase: p }),
     setCognitiveState: (s) => set({ cognitiveState: s }),
     setActionHistory: (h) => set({ actionHistory: h }),
