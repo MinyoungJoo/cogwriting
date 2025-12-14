@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
@@ -9,14 +9,12 @@ export async function POST(req: Request) {
             writing_context
         } = await req.json();
 
-        if (!process.env.GEMINI_API_KEY) {
-            return NextResponse.json({ error: 'GEMINI_API_KEY not found' }, { status: 500 });
+        if (!process.env.OPENAI_API_KEY) {
+            return NextResponse.json({ error: 'OPENAI_API_KEY not found' }, { status: 500 });
         }
 
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash-lite',
-            generationConfig: { responseMimeType: "application/json" }
+        const openai = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY,
         });
 
         const systemPrompt = `
@@ -41,13 +39,24 @@ Respond strictly in JSON format.
 }
 `;
 
-        const result = await model.generateContent(systemPrompt);
-        const response = await result.response;
-        const text = response.text();
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: "Execute strategy." }
+            ],
+            response_format: { type: "json_object" },
+        });
+
+        const text = completion.choices[0].message.content;
+
+        if (!text) {
+            throw new Error('No content generated');
+        }
 
         return NextResponse.json(JSON.parse(text));
     } catch (error: any) {
-        console.error('Error calling Gemini API:', error);
+        console.error('Error calling OpenAI API:', error);
         return NextResponse.json(
             { error: error.message || 'Failed to generate response' },
             { status: 500 }
