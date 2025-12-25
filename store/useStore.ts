@@ -5,7 +5,7 @@ import { MonitorPayload } from '@/src/lib/MonitorAgent';
 interface Keystroke {
     key: string;
     timestamp: number;
-    action: 'keydown' | 'keyup';
+    action: 'keydown' | 'keyup' | 'compositionend';
 }
 
 interface ChatMessage {
@@ -21,10 +21,12 @@ interface AppState {
     phase: Phase;
     cognitiveState: CognitiveState; // Replaces isStuck
     actionHistory: Array<{ time: number; event_code: string }>;
-    chatMessages: ChatMessage[];
+    chatSessions: Record<string, ChatMessage[]>; // Replaces chatMessages
     selectedStrategy: StrategyID | null;
     suggestionOptions: string[] | null;
     ghostText: string | null; // New Ghost Text State
+    ghostTextReplacementLength: number; // How many chars to replace (for Markup strategies)
+    ghostTextPosition: { key: string; offset: number } | null; // Custom insertion position
 
     // Intervention State
     interventionStatus: 'idle' | 'detected' | 'requesting' | 'completed';
@@ -42,10 +44,12 @@ interface AppState {
     setPhase: (p: Phase) => void;
     setCognitiveState: (s: CognitiveState) => void;
     setActionHistory: (h: Array<{ time: number; event_code: string }>) => void;
-    addChatMessage: (msg: ChatMessage) => void;
+    addChatMessage: (msg: ChatMessage, sessionId?: string) => void;
     setSelectedStrategy: (id: StrategyID | null) => void;
     setSuggestionOptions: (opts: string[] | null) => void;
     setGhostText: (text: string | null) => void;
+    setGhostTextReplacementLength: (len: number) => void;
+    setGhostTextPosition: (pos: { key: string; offset: number } | null) => void;
     setMetrics: (metrics: { docLength: number; pauseDuration: number; cursorPos: number; editRatio: number }) => void;
 
     // Intervention Actions
@@ -61,10 +65,12 @@ const useStore = create<AppState>((set, get) => ({
     phase: 'Planning',
     cognitiveState: 'Flow',
     actionHistory: [],
-    chatMessages: [],
+    chatSessions: { 'GENERAL': [] }, // Default session
     selectedStrategy: null,
     suggestionOptions: null,
     ghostText: null,
+    ghostTextReplacementLength: 0,
+    ghostTextPosition: null,
 
     interventionStatus: 'idle',
     pendingPayload: null,
@@ -80,21 +86,41 @@ const useStore = create<AppState>((set, get) => ({
     setPhase: (p) => set({ phase: p }),
     setCognitiveState: (s) => set({ cognitiveState: s }),
     setActionHistory: (h) => set({ actionHistory: h }),
-    addChatMessage: (msg) => set((state) => ({ chatMessages: [...state.chatMessages, msg] })),
+
+    addChatMessage: (msg, sessionId) => set((state) => {
+        const targetSession = sessionId || (state.selectedStrategy || 'GENERAL');
+        const currentSessionMessages = state.chatSessions[targetSession] || [];
+        return {
+            chatSessions: {
+                ...state.chatSessions,
+                [targetSession]: [...currentSessionMessages, msg]
+            }
+        };
+    }),
+
     setSelectedStrategy: (id) => set({ selectedStrategy: id }),
     setSuggestionOptions: (opts) => set({ suggestionOptions: opts }),
     setGhostText: (text) => set({ ghostText: text }),
+    setGhostTextReplacementLength: (len) => set({ ghostTextReplacementLength: len }),
+    setGhostTextPosition: (pos) => set({ ghostTextPosition: pos }),
     setMetrics: (metrics) => set(metrics),
 
     setInterventionStatus: (status) => set({ interventionStatus: status }),
     setPendingPayload: (payload) => set({ pendingPayload: payload }),
 
     triggerIntervention: async () => {
-        const { phase, cognitiveState, pendingPayload } = get();
+        const { phase, cognitiveState, pendingPayload, selectedStrategy } = get();
         if (!pendingPayload) return;
 
         // 1. Determine Strategy
-        const strategy = selectStrategy(phase, cognitiveState);
+        let strategy: Strategy | null = null;
+
+        if (selectedStrategy) {
+            const { getStrategy } = require('@/src/lib/strategy');
+            strategy = getStrategy(selectedStrategy);
+        } else {
+            strategy = selectStrategy(phase, cognitiveState);
+        }
 
         if (!strategy) {
             set({ interventionStatus: 'idle' });
@@ -116,32 +142,52 @@ const useStore = create<AppState>((set, get) => ({
             });
             const data = await res.json();
 
-            // 3. Route Response based on Cognitive State
-            if (cognitiveState === 'Block') {
-                // Block -> Sidebar (Chat/Cards)
+            if (data.system_prompt) {
+                console.log('%c--- SYSTEM PROMPT ---', 'color: #00ff00; font-weight: bold;');
+                console.log(data.system_prompt);
+                console.log('%c---------------------', 'color: #00ff00; font-weight: bold;');
+            }
+
+            // 3. Route Response based on Strategy Type and Cognitive State
+            const isSystem2 = strategy.id.startsWith('S2_');
+
+            if (isSystem2) {
+                // System 2 -> Always Chat (in its own session)
+                if (data.suggestion_content) {
+                    get().addChatMessage({
+                        role: 'assistant',
+                        content: data.suggestion_content,
+                        strategy: strategy.id
+                    }, strategy.id);
+                }
+            } else if (cognitiveState === 'Block') {
+                // Block (System 1) -> Sidebar (Cards/Chat)
                 if (data.suggestion_options) {
                     set({ suggestionOptions: data.suggestion_options });
                 }
                 if (data.suggestion_content) {
-                    set((state) => ({
-                        chatMessages: [...state.chatMessages, {
-                            role: 'assistant',
-                            content: data.suggestion_content,
-                            strategy: strategy.id // Include Strategy ID
-                        }]
-                    }));
+                    // System 1 Block strategies usually go to GENERAL or their own?
+                    // Let's put them in their own session if selected, or GENERAL if auto-triggered?
+                    // If auto-triggered (no selectedStrategy), maybe GENERAL?
+                    // But here strategy.id is set. Let's use strategy.id for consistency if it's a distinct strategy.
+                    // Or keep S1 in GENERAL? The user said "Each chat window independent".
+                    // Let's use strategy.id.
+                    get().addChatMessage({
+                        role: 'assistant',
+                        content: data.suggestion_content,
+                        strategy: strategy.id
+                    }, strategy.id);
                 }
             } else {
-                // Flow -> Editor (Ghost Text)
-                if (data.suggestion_content) {
+                // Flow (System 1) -> Editor (Ghost Text)
+                if (data.replacement_text) {
+                    set({ ghostText: data.replacement_text });
+                } else if (data.suggestion_content) {
                     set({ ghostText: data.suggestion_content });
                 }
             }
 
             set({ interventionStatus: 'completed' });
-
-            // Reset Ghost Text after 5s if not used? Or let GhostTextPlugin handle it.
-            // For now, keep it simple.
 
         } catch (error) {
             console.error('Intervention failed:', error);

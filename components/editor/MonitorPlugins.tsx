@@ -11,25 +11,53 @@ export function KeystrokeMonitorPlugin() {
     const addKeystroke = useStore((state) => state.addKeystroke);
 
     useEffect(() => {
-        return editor.registerCommand(
+        const removeKeyDown = editor.registerCommand(
             KEY_DOWN_COMMAND,
             (event: KeyboardEvent) => {
-                const now = Date.now() / 1000;
+                // Ignore IME composition events in keydown to avoid "Process" spam
+                // keyCode 229 is a standard indicator for IME composition
+                if (event.isComposing || event.key === 'Process' || event.keyCode === 229) {
+                    return false;
+                }
 
-                // 1. Update Store (Legacy/Visual)
+                const now = Date.now() / 1000;
                 addKeystroke({
                     key: event.key,
                     timestamp: now,
                     action: 'keydown'
                 });
-
-                // 2. Feed Monitor Agent (Logic)
                 monitorAgent.on_input_event(event.key);
-
                 return false;
             },
             COMMAND_PRIORITY_NORMAL
         );
+
+        // Handle IME Composition End (for Korean/CJK)
+        const onCompositionEnd = (event: CompositionEvent) => {
+            const now = Date.now() / 1000;
+            // Log the composed text (e.g., "한")
+            addKeystroke({
+                key: event.data,
+                timestamp: now,
+                action: 'compositionend' // distinct action type
+            });
+            monitorAgent.on_input_event(event.data);
+        };
+
+        // We need to attach this to the root element
+        const removeRootListener = editor.registerRootListener((rootElement, prevRootElement) => {
+            if (prevRootElement) {
+                prevRootElement.removeEventListener('compositionend', onCompositionEnd as any);
+            }
+            if (rootElement) {
+                rootElement.addEventListener('compositionend', onCompositionEnd as any);
+            }
+        });
+
+        return () => {
+            removeKeyDown();
+            removeRootListener();
+        };
     }, [editor, addKeystroke]);
 
     return null;

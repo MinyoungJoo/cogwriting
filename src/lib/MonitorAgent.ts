@@ -195,13 +195,36 @@ export class MonitorAgent {
         return this.create_payload('USER_PROMPT', user_prompt);
     }
 
-    private create_payload(reason: string, user_prompt: string | null = null): MonitorPayload {
+    public manual_trigger_with_replacement(user_prompt: string, mask_length: number, replacement_text: string): MonitorPayload {
+        // 1. Get normal context
+        const context = this.get_cursor_context();
+
+        // 2. Find [CURSOR] position
+        const cursor_marker = ' [CURSOR] ';
+        const cursor_pos = context.indexOf(cursor_marker);
+
+        if (cursor_pos !== -1) {
+            // 3. Replace text before cursor with replacement_text
+            const pre_cursor_text = context.substring(0, cursor_pos);
+            const post_cursor_text = context.substring(cursor_pos + cursor_marker.length);
+
+            if (pre_cursor_text.length >= mask_length) {
+                const masked_pre_text = pre_cursor_text.slice(0, -mask_length) + ' ' + replacement_text + ' ';
+                const masked_context = masked_pre_text + post_cursor_text;
+                return this.create_payload('USER_PROMPT', user_prompt, masked_context);
+            }
+        }
+
+        return this.create_payload('USER_PROMPT', user_prompt);
+    }
+
+    private create_payload(reason: string, user_prompt: string | null = null, context_override: string | null = null): MonitorPayload {
         return {
             current_phase: this.current_phase,
             cognitive_state: this.current_state,
             stuck_duration: (Date.now() / 1000) - this.last_action_time,
             state_history: this.get_summary_history(),
-            writing_context: this.get_cursor_context(),
+            writing_context: context_override || this.get_cursor_context(),
             trigger_reason: reason,
             user_prompt: user_prompt,
         };

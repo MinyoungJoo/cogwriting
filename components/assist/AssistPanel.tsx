@@ -1,20 +1,23 @@
 import useStore from '@/store/useStore';
-import { Sparkles, Send } from 'lucide-react';
+import { Sparkles, Send, MessageSquare, Search, LayoutList, UserCheck, BookOpen, Palette, Play } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { selectStrategy } from '@/src/lib/strategy';
-
-import UnblockingCards from './UnblockingCards';
+import { monitorAgent } from '@/src/lib/MonitorAgent';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export default function AssistPanel() {
     const {
-        chatMessages,
+        chatSessions,
         addChatMessage,
         selectedStrategy,
         interventionStatus,
         triggerIntervention,
         content,
         phase,
-        cognitiveState
+        cognitiveState,
+        setSelectedStrategy,
+        setPendingPayload
     } = useStore();
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -23,29 +26,37 @@ export default function AssistPanel() {
     // Calculate potential strategy for display
     const potentialStrategy = selectStrategy(phase, cognitiveState);
 
+    // Determine current session messages
+    const currentSessionId = selectedStrategy || 'GENERAL';
+    const currentMessages = chatSessions[currentSessionId] || [];
+
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
     useEffect(() => {
         scrollToBottom();
-    }, [chatMessages]);
+    }, [currentMessages]);
 
     const handleSend = async () => {
         if (!input.trim()) return;
 
         const userMessage = { role: 'user' as const, content: input };
-        addChatMessage(userMessage);
+        addChatMessage(userMessage, currentSessionId);
         setInput('');
         setIsLoading(true);
 
         try {
+            // Use selected strategy if available, otherwise potential strategy
+            const strategyId = selectedStrategy || potentialStrategy?.id || 'CHAT_DEFAULT';
+
             const payload = {
-                strategy_id: potentialStrategy?.id || 'CHAT_DEFAULT',
-                system_instruction: potentialStrategy?.systemInstruction || 'You are a helpful writing assistant. Respond in Korean.',
+                strategy_id: strategyId,
+                system_instruction: 'You are a helpful writing assistant. Respond in Korean.',
                 writing_context: content,
                 trigger_reason: 'USER_PROMPT',
-                user_prompt: input
+                user_prompt: input,
+                chat_history: currentMessages
             };
 
             const response = await fetch('/api/chat', {
@@ -65,110 +76,201 @@ export default function AssistPanel() {
             if (data.suggestion_content) {
                 addChatMessage({
                     role: 'assistant',
-                    content: data.suggestion_content
-                });
+                    content: data.suggestion_content,
+                    strategy: strategyId
+                }, currentSessionId);
             } else {
                 addChatMessage({
                     role: 'assistant',
                     content: "I'm thinking... (Decision: WAIT)"
-                });
+                }, currentSessionId);
             }
         } catch (error) {
             console.error('Failed to send message:', error);
             addChatMessage({
                 role: 'assistant',
                 content: 'Sorry, I encountered an error. Please try again.'
-            });
+            }, currentSessionId);
         } finally {
             setIsLoading(false);
         }
     };
 
-    return (
-        <div className="w-[350px] bg-gray-900 text-white flex flex-col border-l border-gray-800">
-            {/* Header */}
-            <div className="p-4 border-b border-gray-800 flex justify-between items-center">
-                <h2 className="font-bold text-lg flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-yellow-400" />
-                    Assist Agent
-                </h2>
-                <div className="text-xs text-gray-500">
-                    {selectedStrategy ? selectedStrategy.replace('S1_', '').replace('S2_', '') : 'Ready'}
-                </div>
-            </div>
+    // Only select the strategy, do not trigger
+    const handleToolSelect = (strategyId: any) => {
+        console.log(`Tool Selected: ${strategyId}`);
+        setSelectedStrategy(strategyId);
+    };
 
-            {/* Manual Trigger Button */}
-            {interventionStatus === 'detected' && (
-                <div className="p-4 bg-blue-900/20 border-b border-blue-800/50">
+    // Manual Trigger for Analysis
+    const handleRunAnalysis = () => {
+        if (!selectedStrategy) return;
+        console.log(`Running Analysis for: ${selectedStrategy}`);
+        const payload = monitorAgent.manual_trigger(`Review Request: ${selectedStrategy}`);
+        setPendingPayload(payload);
+        triggerIntervention();
+    };
+
+    const tools = [
+        { id: 'S2_LOGIC_AUDITOR', label: 'Logic', icon: Search, desc: '논리 점검' },
+        { id: 'S2_STRUCTURAL_MAPPING', label: 'Structure', icon: LayoutList, desc: '구조 시각화' },
+        { id: 'S2_THIRD_PARTY_AUDITOR', label: 'Auditor', icon: UserCheck, desc: '제3자 피드백' },
+        { id: 'S2_EVIDENCE_SUPPORT', label: 'Evidence', icon: BookOpen, desc: '근거 자료' },
+        { id: 'S2_TONE_REFINEMENT', label: 'Tone', icon: Palette, desc: '어조 정제' },
+    ];
+
+    const EDITOR_STRATEGIES = [
+        'S1_GHOST_TEXT',
+        'S1_GAP_FILLING',
+        'S1_REFINEMENT',
+        'S1_IDEA_EXPANSION',
+        'S1_PATTERN_BREAKER'
+    ];
+
+    const isEditorStrategy = selectedStrategy && EDITOR_STRATEGIES.includes(selectedStrategy);
+
+    return (
+        <div className="w-[400px] bg-gray-900 text-white flex border-l border-gray-800">
+            {/* Sidebar */}
+            <div className="w-14 flex flex-col items-center py-4 border-r border-gray-800 gap-4 bg-gray-950">
+                <div className="mb-2">
+                    <Sparkles className="w-6 h-6 text-yellow-400" />
+                </div>
+
+                {/* Chat Home */}
+                <button
+                    onClick={() => {
+                        setSelectedStrategy(null);
+                        scrollToBottom();
+                    }}
+                    className={`p-2 rounded-lg transition-colors ${!selectedStrategy || isEditorStrategy ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'}`}
+                    title="Chat"
+                >
+                    <MessageSquare className="w-5 h-5" />
+                </button>
+
+                <div className="w-8 h-[1px] bg-gray-800 my-1" />
+
+                {/* S2 Tools */}
+                {tools.map((tool) => (
                     <button
-                        onClick={() => triggerIntervention()}
-                        className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-md flex flex-col items-center justify-center gap-1 transition-colors animate-pulse"
+                        key={tool.id}
+                        onClick={() => handleToolSelect(tool.id)}
+                        className={`p-2 rounded-lg transition-colors group relative ${selectedStrategy === tool.id ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+                        title={tool.desc}
                     >
-                        <div className="flex items-center gap-2 font-bold">
-                            <Sparkles className="w-4 h-4" />
-                            AI Suggestion Available
-                        </div>
-                        <div className="text-[10px] uppercase tracking-wider opacity-80">
-                            {potentialStrategy ? potentialStrategy.id.replace('S1_', '').replace('S2_', '').replace('_', ' ') : 'Ready'}
+                        <tool.icon className="w-5 h-5" />
+                        {/* Tooltip */}
+                        <div className="absolute left-12 top-1/2 -translate-y-1/2 bg-gray-800 text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none z-50 border border-gray-700">
+                            {tool.label}
                         </div>
                     </button>
-                </div>
-            )}
-
-            {/* Loading State */}
-            {interventionStatus === 'requesting' && (
-                <div className="p-4 text-center text-gray-400 animate-pulse">
-                    Generating suggestion...
-                </div>
-            )}
-
-            {/* Chat Area */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {chatMessages.map((msg, idx) => (
-                    <div key={idx} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                        {msg.role === 'assistant' && msg.strategy && (
-                            <div className="text-[10px] text-gray-500 mb-1 ml-1 uppercase tracking-wider">
-                                {msg.strategy.replace('S1_', '').replace('S2_', '').replace('_', ' ')}
-                            </div>
-                        )}
-                        <div className={`max-w-[85%] p-3 rounded-lg text-sm ${msg.role === 'user'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-800 text-gray-200 border border-gray-700'
-                            }`}>
-                            {msg.content}
-                        </div>
-                    </div>
                 ))}
-                {isLoading && (
-                    <div className="flex justify-start">
-                        <div className="bg-gray-800 p-3 rounded-lg rounded-bl-none flex items-center gap-2">
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-75" />
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-150" />
-                        </div>
+            </div>
+
+            {/* Main Content */}
+            <div className="flex-1 flex flex-col h-full">
+                {/* Header */}
+                <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900">
+                    <h2 className="font-bold text-sm flex items-center gap-2">
+                        {selectedStrategy && !isEditorStrategy ? tools.find(t => t.id === selectedStrategy)?.label || 'Assist Agent' : 'Assist Agent'}
+                    </h2>
+                    {interventionStatus === 'requesting' && !isEditorStrategy && (
+                        <span className="text-xs text-blue-400 animate-pulse">Processing...</span>
+                    )}
+                </div>
+
+                {/* Analysis Trigger Button (Only when S2 strategy selected) */}
+                {selectedStrategy && selectedStrategy.startsWith('S2_') && (
+                    <div className="p-3 bg-gray-800/50 border-b border-gray-800">
+                        <button
+                            onClick={handleRunAnalysis}
+                            disabled={interventionStatus === 'requesting'}
+                            className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md flex items-center justify-center gap-2 transition-colors text-sm font-medium"
+                        >
+                            <Play className="w-4 h-4 fill-current" />
+                            <span>Run Analysis</span>
+                        </button>
                     </div>
                 )}
-                <div ref={messagesEndRef} />
-            </div>
 
-            <div className="p-4 border-t border-gray-800 bg-gray-900">
-                <div className="flex gap-2">
-                    <input
-                        type="text"
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                        placeholder="Ask for help..."
-                        className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm text-white placeholder-gray-400"
-                        disabled={isLoading}
-                    />
-                    <button
-                        onClick={handleSend}
-                        disabled={isLoading || !input.trim()}
-                        className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                        <Send className="w-4 h-4" />
-                    </button>
+                {/* Manual Trigger Button (Contextual) */}
+                {interventionStatus === 'detected' && (
+                    <div className="p-3 bg-blue-900/20 border-b border-blue-800/50">
+                        <button
+                            onClick={() => triggerIntervention()}
+                            className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white rounded-md flex items-center justify-center gap-2 transition-colors animate-pulse text-sm"
+                        >
+                            <Sparkles className="w-4 h-4" />
+                            <span>
+                                Suggestion: {potentialStrategy ? potentialStrategy.id.replace('S1_', '').replace('S2_', '').replace(/_/g, ' ') : 'Ready'}
+                            </span>
+                        </button>
+                    </div>
+                )}
+
+                {/* Chat Area */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {currentMessages.map((msg, idx) => (
+                        <div key={idx} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                            {msg.role === 'assistant' && msg.strategy && (
+                                <div className="text-[10px] text-gray-500 mb-1 ml-1 uppercase tracking-wider flex items-center gap-1">
+                                    <Sparkles className="w-3 h-3" />
+                                    {msg.strategy.replace('S1_', '').replace('S2_', '').replace(/_/g, ' ')}
+                                </div>
+                            )}
+                            <div className={`max-w-[90%] p-3 rounded-lg text-sm ${msg.role === 'user'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-800 text-gray-200 border border-gray-700'
+                                }`}>
+                                <ReactMarkdown
+                                    remarkPlugins={[remarkGfm]}
+                                    components={{
+                                        ul: ({ node, ...props }) => <ul className="list-disc pl-4 my-2 space-y-1" {...props} />,
+                                        ol: ({ node, ...props }) => <ol className="list-decimal pl-4 my-2 space-y-1" {...props} />,
+                                        li: ({ node, ...props }) => <li className="leading-relaxed" {...props} />,
+                                        p: ({ node, ...props }) => <p className="mb-2 last:mb-0 leading-relaxed" {...props} />,
+                                        strong: ({ node, ...props }) => <strong className="font-bold text-white" {...props} />,
+                                        code: ({ node, ...props }) => <code className="bg-gray-900 px-1 py-0.5 rounded text-xs font-mono" {...props} />,
+                                    }}
+                                >
+                                    {msg.content}
+                                </ReactMarkdown>
+                            </div>
+                        </div>
+                    ))}
+                    {isLoading && (
+                        <div className="flex justify-start">
+                            <div className="bg-gray-800 p-3 rounded-lg rounded-bl-none flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" />
+                                <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-75" />
+                                <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-150" />
+                            </div>
+                        </div>
+                    )}
+                    <div ref={messagesEndRef} />
+                </div>
+
+                {/* Input Area */}
+                <div className="p-3 border-t border-gray-800 bg-gray-900">
+                    <div className="flex gap-2">
+                        <input
+                            type="text"
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                            placeholder="Ask for help..."
+                            className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm text-white placeholder-gray-400"
+                            disabled={isLoading}
+                        />
+                        <button
+                            onClick={handleSend}
+                            disabled={isLoading || !input.trim()}
+                            className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <Send className="w-4 h-4" />
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

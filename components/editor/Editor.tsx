@@ -8,7 +8,9 @@ import { AutoFocusPlugin } from '@lexical/react/LexicalAutoFocusPlugin';
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
 import { TextNode } from 'lexical';
 import GhostTextPlugin from './GhostTextPlugin';
+import MarkupTriggerPlugin from './MarkupTriggerPlugin';
 import { KeystrokeMonitorPlugin, TextChangePlugin } from './MonitorPlugins';
+import SelectionMenuPlugin from './SelectionMenuPlugin';
 
 const theme = {
     paragraph: 'mb-2',
@@ -43,6 +45,8 @@ export default function Editor() {
                 <KeystrokeMonitorPlugin />
                 <TextChangePlugin />
                 <GhostTextPlugin />
+                <MarkupTriggerPlugin />
+                <SelectionMenuPlugin />
             </div>
         </LexicalComposer>
     );

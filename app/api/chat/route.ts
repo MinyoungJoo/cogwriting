@@ -6,7 +6,9 @@ export async function POST(req: Request) {
         const {
             strategy_id,
             system_instruction,
-            writing_context
+            writing_context,
+            chat_history = [],
+            user_prompt
         } = await req.json();
 
         if (!process.env.OPENAI_API_KEY) {
@@ -16,6 +18,20 @@ export async function POST(req: Request) {
         const openai = new OpenAI({
             apiKey: process.env.OPENAI_API_KEY,
         });
+
+        let outputFormat = `
+{
+    "suggestion_content": "The generated text content in Markdown format (e.g., using bullets, bold text). Do NOT use nested JSON objects here."
+}
+`;
+
+        if (strategy_id === 'S1_REFINEMENT' || strategy_id === 'S1_IDEA_EXPANSION') {
+            outputFormat = `
+{
+  "replacement_text": "A short phrase to fill in the blank. This MUST be a grammatical fragment, NOT a full sentence. Do NOT add a period at the end."
+}
+`;
+        }
 
         const systemPrompt = `
 # {ROLE}
@@ -33,18 +49,26 @@ ${system_instruction}
 # {OUTPUT_FORMAT}
 Respond strictly in JSON format.
 
-{
-    "suggestion_content": "The generated text content.",
-    "suggestion_options": ["Option 1", "Option 2", "Option 3"] // ONLY if Strategy is S1_GUIDED_EXPLORATION
-}
+${outputFormat}
 `;
+
+        console.log('--- SYSTEM PROMPT ---');
+        console.log(systemPrompt);
+        console.log('---------------------');
+
+        // Construct messages array
+        const messages: any[] = [
+            { role: "system", content: systemPrompt },
+            ...chat_history.map((msg: any) => ({
+                role: msg.role,
+                content: msg.content
+            })),
+            { role: "user", content: user_prompt || "Execute strategy." }
+        ];
 
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
-            messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: "Execute strategy." }
-            ],
+            messages: messages,
             response_format: { type: "json_object" },
         });
 
@@ -54,7 +78,17 @@ Respond strictly in JSON format.
             throw new Error('No content generated');
         }
 
-        return NextResponse.json(JSON.parse(text));
+        const parsed = JSON.parse(text);
+
+        // Ensure suggestion_content is a string
+        if (typeof parsed.suggestion_content === 'object') {
+            parsed.suggestion_content = JSON.stringify(parsed.suggestion_content, null, 2);
+        }
+
+        return NextResponse.json({
+            ...parsed,
+            system_prompt: systemPrompt
+        });
     } catch (error: any) {
         console.error('Error calling OpenAI API:', error);
         return NextResponse.json(
