@@ -36,44 +36,46 @@ export function useMonitor() {
                 docLength: monitorAgent.getDocLength(),
                 pauseDuration: pauseDuration,
                 cursorPos: monitorAgent.getCursorPos(),
-                editRatio: monitorAgent.getEditRatio()
+                editRatio: monitorAgent.getEditRatio(),
+                revisionRatio: monitorAgent.getRevisionRatio()
             });
 
-            // System Trigger 1: Ghost Text (10s Pause)
-            // Only trigger if not already triggered and no ghost text active
-            // pauseDuration is in seconds
-            // if (pauseDuration >= 10 && pauseDuration < 11) {
-            //     const { ghostText, interventionStatus } = useStore.getState();
-            //     if (!ghostText && interventionStatus === 'idle') {
-            //         console.log('System Trigger: 10s Pause (Ghost Text)');
-            //         useStore.getState().setSelectedStrategy('S1_GHOST_TEXT');
-            //         useStore.getState().triggerIntervention();
-            //     }
-            // }
-
-            // System Trigger 2: Brainstorming (20s Pause)
-            // Trigger Brainstorming options (Labels)
-            // if (pauseDuration >= 20 && pauseDuration < 21) {
-            //     const { interventionStatus } = useStore.getState();
-            //     // We can trigger this even if Ghost Text is there (maybe replace it or show alongside)
-            //     // For now, let's just trigger it.
-            //     // if (interventionStatus !== 'requesting') {
-            //     //     console.log('System Trigger: 20s Pause (Brainstorming)');
-            //     //     useStore.getState().setSelectedStrategy('S1_BRAINSTORMING');
-            //     //     useStore.getState().triggerIntervention();
-            //     // }
-            // }
-
             // Check for intervention triggers
-            // const payload = monitorAgent.check_status();
+            const payload = monitorAgent.check_status();
 
-            // // If payload is returned (Stuck detected or Flow Trigger), trigger intervention
-            // if (payload) {
-            //     console.log('Intervention detected, payload:', payload);
-            //     useStore.getState().setPendingPayload(payload);
-            //     // Always wait for manual user acceptance
-            //     useStore.getState().setInterventionStatus('detected');
-            // }
+            // If payload is returned (Stuck detected or Flow Trigger), trigger intervention
+            if (payload) {
+                const { isSystemInitiatedEnabled, interventionStatus } = useStore.getState();
+
+                // If System Initiated is disabled, ignore system triggers
+                // Also ignore if an intervention is already active (not idle)
+                // AND ignore if a nudge is currently displayed (isStruggleDetected / isIdeaSparkDetected)
+                const { isStruggleDetected, isIdeaSparkDetected, systemMode } = useStore.getState();
+                if (isSystemInitiatedEnabled && interventionStatus === 'idle' && !isStruggleDetected && !isIdeaSparkDetected) {
+                    console.log('Intervention detected, payload:', payload);
+
+                    // Filter triggers based on System Mode
+                    if (systemMode === 's1' && payload.trigger_reason === 'STRUGGLE_DETECTION') {
+                        console.log('[Monitor] Skipping Struggle Detection (S1 Mode)');
+                        return;
+                    }
+                    if (systemMode === 's2' && payload.trigger_reason === 'IDEA_SPARK') {
+                        console.log('[Monitor] Skipping Idea Spark (S2 Mode)');
+                        return;
+                    }
+
+                    useStore.getState().setPendingPayload(payload);
+
+                    if (payload.trigger_reason === 'STRUGGLE_DETECTION' || payload.trigger_reason === 'IDEA_SPARK') {
+                        // For Struggle Detection and Idea Spark Nudge, we just want to update the UI state immediately
+                        // triggerIntervention in useStore handles setting isStruggleDetected/isIdeaSparkDetected = true
+                        useStore.getState().triggerIntervention();
+                    } else {
+                        // For others, we set status to 'detected' and let the UI/Plugins handle the handoff
+                        useStore.getState().setInterventionStatus('detected');
+                    }
+                }
+            }
 
         }, 1000);
 

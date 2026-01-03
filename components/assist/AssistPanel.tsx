@@ -107,6 +107,11 @@ export default function AssistPanel() {
         if (!selectedStrategy) return;
         console.log(`Running Analysis for: ${selectedStrategy}`);
         const payload = monitorAgent.manual_trigger(`Review Request: ${selectedStrategy}`);
+
+        // FORCE FULL CONTEXT for Chat Analysis
+        // User requested that chat interactions should have access to the full text
+        payload.writing_context = content;
+
         setPendingPayload(payload);
         triggerIntervention();
     };
@@ -136,20 +141,6 @@ export default function AssistPanel() {
                 <div className="mb-2">
                     <Sparkles className="w-6 h-6 text-yellow-400" />
                 </div>
-
-                {/* Chat Home */}
-                <button
-                    onClick={() => {
-                        setSelectedStrategy(null);
-                        scrollToBottom();
-                    }}
-                    className={`p-2 rounded-lg transition-colors ${!selectedStrategy || isEditorStrategy ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'}`}
-                    title="Chat"
-                >
-                    <MessageSquare className="w-5 h-5" />
-                </button>
-
-                <div className="w-8 h-[1px] bg-gray-800 my-1" />
 
                 {/* S2 Tools */}
                 {tools.map((tool) => (
@@ -194,84 +185,84 @@ export default function AssistPanel() {
                     </div>
                 )}
 
-                {/* Manual Trigger Button (Contextual) */}
-                {interventionStatus === 'detected' && (
-                    <div className="p-3 bg-blue-900/20 border-b border-blue-800/50">
-                        <button
-                            onClick={() => triggerIntervention()}
-                            className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white rounded-md flex items-center justify-center gap-2 transition-colors animate-pulse text-sm"
-                        >
-                            <Sparkles className="w-4 h-4" />
-                            <span>
-                                Suggestion: {potentialStrategy ? potentialStrategy.id.replace('S1_', '').replace('S2_', '').replace(/_/g, ' ') : 'Ready'}
-                            </span>
-                        </button>
-                    </div>
-                )}
 
-                {/* Chat Area */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                    {currentMessages.map((msg, idx) => (
-                        <div key={idx} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                            {msg.role === 'assistant' && msg.strategy && (
-                                <div className="text-[10px] text-gray-500 mb-1 ml-1 uppercase tracking-wider flex items-center gap-1">
-                                    <Sparkles className="w-3 h-3" />
-                                    {msg.strategy.replace('S1_', '').replace('S2_', '').replace(/_/g, ' ')}
+
+                {/* Chat Area - Only show if S2 strategy is selected AND it's not Diagnosis */}
+                {selectedStrategy && selectedStrategy.startsWith('S2_') && selectedStrategy !== 'S2_DIAGNOSIS' ? (
+                    <>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                            {currentMessages.map((msg, idx) => (
+                                <div key={idx} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                    {msg.role === 'assistant' && msg.strategy && (
+                                        <div className="text-[10px] text-gray-500 mb-1 ml-1 uppercase tracking-wider flex items-center gap-1">
+                                            <Sparkles className="w-3 h-3" />
+                                            {msg.strategy.replace('S1_', '').replace('S2_', '').replace(/_/g, ' ')}
+                                        </div>
+                                    )}
+                                    <div className={`max-w-[90%] p-3 rounded-lg text-sm ${msg.role === 'user'
+                                        ? 'bg-blue-600 text-white'
+                                        : 'bg-gray-800 text-gray-200 border border-gray-700'
+                                        }`}>
+                                        <ReactMarkdown
+                                            remarkPlugins={[remarkGfm]}
+                                            components={{
+                                                ul: ({ node, ...props }) => <ul className="list-disc pl-4 my-2 space-y-1" {...props} />,
+                                                ol: ({ node, ...props }) => <ol className="list-decimal pl-4 my-2 space-y-1" {...props} />,
+                                                li: ({ node, ...props }) => <li className="leading-relaxed" {...props} />,
+                                                p: ({ node, ...props }) => <p className="mb-2 last:mb-0 leading-relaxed" {...props} />,
+                                                strong: ({ node, ...props }) => <strong className="font-bold text-white" {...props} />,
+                                                code: ({ node, ...props }) => <code className="bg-gray-900 px-1 py-0.5 rounded text-xs font-mono" {...props} />,
+                                            }}
+                                        >
+                                            {msg.content}
+                                        </ReactMarkdown>
+                                    </div>
+                                </div>
+                            ))}
+                            {isLoading && (
+                                <div className="flex justify-start">
+                                    <div className="bg-gray-800 p-3 rounded-lg rounded-bl-none flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" />
+                                        <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-75" />
+                                        <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-150" />
+                                    </div>
                                 </div>
                             )}
-                            <div className={`max-w-[90%] p-3 rounded-lg text-sm ${msg.role === 'user'
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-800 text-gray-200 border border-gray-700'
-                                }`}>
-                                <ReactMarkdown
-                                    remarkPlugins={[remarkGfm]}
-                                    components={{
-                                        ul: ({ node, ...props }) => <ul className="list-disc pl-4 my-2 space-y-1" {...props} />,
-                                        ol: ({ node, ...props }) => <ol className="list-decimal pl-4 my-2 space-y-1" {...props} />,
-                                        li: ({ node, ...props }) => <li className="leading-relaxed" {...props} />,
-                                        p: ({ node, ...props }) => <p className="mb-2 last:mb-0 leading-relaxed" {...props} />,
-                                        strong: ({ node, ...props }) => <strong className="font-bold text-white" {...props} />,
-                                        code: ({ node, ...props }) => <code className="bg-gray-900 px-1 py-0.5 rounded text-xs font-mono" {...props} />,
-                                    }}
-                                >
-                                    {msg.content}
-                                </ReactMarkdown>
-                            </div>
+                            <div ref={messagesEndRef} />
                         </div>
-                    ))}
-                    {isLoading && (
-                        <div className="flex justify-start">
-                            <div className="bg-gray-800 p-3 rounded-lg rounded-bl-none flex items-center gap-2">
-                                <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" />
-                                <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-75" />
-                                <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-150" />
-                            </div>
-                        </div>
-                    )}
-                    <div ref={messagesEndRef} />
-                </div>
 
-                {/* Input Area */}
-                <div className="p-3 border-t border-gray-800 bg-gray-900">
-                    <div className="flex gap-2">
-                        <input
-                            type="text"
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                            placeholder="Ask for help..."
-                            className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm text-white placeholder-gray-400"
-                            disabled={isLoading}
-                        />
-                        <button
-                            onClick={handleSend}
-                            disabled={isLoading || !input.trim()}
-                            className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                            <Send className="w-4 h-4" />
-                        </button>
+                        {/* Input Area */}
+                        <div className="p-3 border-t border-gray-800 bg-gray-900">
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={input}
+                                    onChange={(e) => setInput(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                                    placeholder="Ask for help..."
+                                    className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm text-white placeholder-gray-400"
+                                    disabled={isLoading}
+                                />
+                                <button
+                                    onClick={handleSend}
+                                    disabled={isLoading || !input.trim()}
+                                    className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    <Send className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    </>
+                ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center text-gray-500 p-8 text-center">
+                        <Sparkles className="w-12 h-12 mb-4 text-gray-700" />
+                        <h3 className="text-lg font-medium text-gray-400 mb-2">Assist Agent</h3>
+                        <p className="text-sm">
+                            좌측 메뉴에서 도구를 선택하거나<br />
+                            AI가 문제를 감지하면 자동으로 활성화됩니다.
+                        </p>
                     </div>
-                </div>
+                )}
             </div>
         </div>
     );

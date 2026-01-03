@@ -9,7 +9,7 @@ import { monitorAgent } from '@/src/lib/MonitorAgent';
 
 export default function GhostTextPlugin() {
     const [editor] = useLexicalComposerContext();
-    const { ghostText, setGhostText, ghostTextPosition } = useStore();
+    const { ghostText, setGhostText, ghostTextPosition, suggestionHistory, suggestionIndex, navigateHistory, selectedStrategy } = useStore();
     const ghostNodeKey = useRef<string | null>(null);
 
     // Helper to safely remove node without breaking selection
@@ -37,6 +37,7 @@ export default function GhostTextPlugin() {
 
     // 1. Listen for new suggestions (Ghost Text)
     useEffect(() => {
+        console.log('GhostTextPlugin State:', ghostText); // Added Debug Log
         if (ghostText) {
             editor.update(() => {
                 // Remove existing ghost node if any
@@ -185,15 +186,38 @@ export default function GhostTextPlugin() {
                     // Pattern Breaker: Alt + ArrowRight
                     if (event.altKey && event.key === 'ArrowRight') {
                         event.preventDefault();
-                        console.log('Pattern Breaker Triggered');
 
-                        // Trigger S3_PATTERN_BREAKER
-                        const { triggerIntervention, setPendingPayload, setSelectedStrategy } = useStore.getState();
+                        // 1. Try to navigate forward in history
+                        if (suggestionIndex < suggestionHistory.length - 1) {
+                            console.log('Navigating History Forward');
+                            navigateHistory(1);
+                            return true;
+                        }
+
+                        // 2. If at end, trigger Pattern Breaker (as sub-feature)
+                        console.log('Pattern Breaker Triggered (Sub-feature)');
+
+                        // Trigger current strategy again with alternative prompt
+                        const { triggerIntervention, setPendingPayload } = useStore.getState();
+                        const currentStrategyId = selectedStrategy || 'S1_GHOST_TEXT';
+
                         const payload = monitorAgent.manual_trigger(`Alternative for: ${ghostText}`);
 
                         setPendingPayload(payload);
-                        setSelectedStrategy('S1_PATTERN_BREAKER');
-                        triggerIntervention();
+                        // Do NOT change selectedStrategy, just trigger with current one
+                        triggerIntervention(currentStrategyId, false, `Alternative for: ${ghostText}`);
+                        return true;
+                    }
+
+                    // History Back: Alt + ArrowLeft
+                    if (event.altKey && event.key === 'ArrowLeft') {
+                        event.preventDefault();
+                        if (suggestionIndex > 0) {
+                            console.log('Navigating History Back');
+                            navigateHistory(-1);
+                            return true;
+                        }
+                        // If at start, do nothing (or maybe dismiss? let's just keep it)
                         return true;
                     }
 
@@ -213,7 +237,7 @@ export default function GhostTextPlugin() {
             },
             COMMAND_PRIORITY_NORMAL
         );
-    }, [editor, ghostText, setGhostText]);
+    }, [editor, ghostText, setGhostText, suggestionHistory, suggestionIndex, navigateHistory, selectedStrategy]);
 
     // 3. Clean up on unmount
     useEffect(() => {

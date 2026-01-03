@@ -14,7 +14,7 @@ export default function UnblockingCards() {
         setTimeout(() => setCopiedIndex(null), 2000);
     };
 
-    if (selectedStrategy !== 'S1_BRAINSTORMING' || !suggestionOptions || suggestionOptions.length === 0) return null;
+    if (selectedStrategy !== 'S1_IDEA_SPARK' || !suggestionOptions || suggestionOptions.length === 0) return null;
 
     return (
         <div className="flex flex-col gap-3 p-4 animate-in fade-in slide-in-from-right-4 duration-500">

@@ -37,6 +37,23 @@ export class MonitorAgent {
     private prev_text_length: number;
     private total_chars_typed: number;
 
+    // New Advanced Metrics
+    private last_burst_length: number; // P-Burst
+    private current_burst_length: number;
+
+    private revision_count_in_sentence: number; // Immediate Revision
+    private keystrokes_in_current_sentence: number; // Total keystrokes in current sentence
+    private distant_revision_count: number; // Distant Revision
+
+    // Struggle Detection
+    private recent_keystrokes: { type: 'BACKSPACE' | 'SPACE' | 'ENTER' | 'CHAR', time: number, burst_len: number }[];
+
+    private total_pause_time: number;
+    private total_active_time: number;
+
+    // Trigger Cooldowns
+    private trigger_cooldowns: Record<string, number>;
+
     constructor() {
         this.last_action_time = Date.now() / 1000;
         this.last_trigger_time = 0;
@@ -52,21 +69,81 @@ export class MonitorAgent {
         this.start_time = Date.now();
         this.prev_text_length = 0;
         this.total_chars_typed = 0;
+
+        // Advanced Metrics Init
+        this.last_burst_length = 0;
+        this.current_burst_length = 0;
+        this.revision_count_in_sentence = 0;
+        this.keystrokes_in_current_sentence = 0;
+        this.distant_revision_count = 0;
+        this.recent_keystrokes = [];
+        this.total_pause_time = 0;
+        this.total_active_time = 0;
+        this.trigger_cooldowns = {};
     }
 
     // Called on KeyDown (for EditRatio)
     public on_input_event(event_code: string) {
         const current_time = Date.now() / 1000;
+        const idle_time = current_time - this.last_action_time;
+
+        // Update Pause/Active Time
+        if (idle_time > 2.0) {
+            this.total_pause_time += idle_time;
+            // End of Burst
+            if (this.current_burst_length > 0) {
+                this.last_burst_length = this.current_burst_length;
+                this.current_burst_length = 0;
+            }
+        } else {
+            this.total_active_time += idle_time;
+        }
+
         this.last_action_time = current_time;
         this.action_history.push({ time: current_time, event_code });
 
         // Update Key History
         const review_keys = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
         let keyType = 'TYPE';
+
         if (review_keys.includes(event_code)) {
             keyType = 'EDIT';
+            // Revision Logic
+            if (event_code === 'Backspace' || event_code === 'Delete') {
+                // Check if immediate or distant
+                // Simplified: If cursor is at end, it's immediate. Else distant.
+                if (this.cursor_index >= this.current_text.length - 1) {
+                    this.revision_count_in_sentence++;
+                } else {
+                    this.distant_revision_count++;
+                }
+            }
         } else if (event_code === 'Enter') {
             keyType = 'ENTER';
+            this.revision_count_in_sentence = 0; // Reset on new line
+            this.keystrokes_in_current_sentence = 0;
+        } else {
+            // Typing
+            this.current_burst_length++;
+        }
+
+        this.keystrokes_in_current_sentence++;
+
+        // Track for Struggle Detection (New Logic)
+        let specificType: 'BACKSPACE' | 'SPACE' | 'ENTER' | 'CHAR' = 'CHAR';
+        if (event_code === 'Backspace' || event_code === 'Delete') specificType = 'BACKSPACE';
+        else if (event_code === 'Enter') specificType = 'ENTER';
+        else if (event_code === ' ' || event_code === 'Space') specificType = 'SPACE';
+
+        this.recent_keystrokes.push({
+            type: specificType,
+            time: Date.now(),
+            burst_len: this.current_burst_length
+        });
+
+        // Keep only last 100 for efficiency (though we slice in check_status, keeping array small is good)
+        if (this.recent_keystrokes.length > 200) {
+            this.recent_keystrokes.shift();
         }
 
         this.key_history.push(keyType);
@@ -95,88 +172,99 @@ export class MonitorAgent {
         const now = Date.now() / 1000;
         const idle_time = now - this.last_action_time;
 
-        // Logic A: Cognitive State (Flow vs Block)
-        if (idle_time >= this.STUCK_THRESHOLD) {
-            this.current_state = 'Block';
-        } else {
-            this.current_state = 'Flow';
+        // Burst Logic: Reset burst if idle > 2s
+        if (idle_time > 2.0 && this.current_burst_length > 0) {
+            this.last_burst_length = this.current_burst_length;
+            this.current_burst_length = 0;
         }
 
-        // Logic B: Phase Detection
-        const detected_phase = this.calculate_phase();
-        if (detected_phase !== this.current_phase) {
-            const log_entry: LogEntry = {
-                timestamp: now,
-                from_phase: this.current_phase,
-                to_phase: detected_phase,
-            };
-            this.state_history_log.push(log_entry);
-            this.current_phase = detected_phase;
-            console.log(`LOG: Phase changed to ${this.current_phase}`);
+        // Logic C: Advanced Triggers
+        // Helper to check cooldown
+        const checkCooldown = (trigger: string, seconds: number) => {
+            const last = this.trigger_cooldowns[trigger] || 0;
+            const diff = now - last;
+            if (diff > seconds) {
+                // console.log(`[Cooldown] Trigger ${trigger} allowed. Diff: ${diff.toFixed(1)}s > ${seconds}s`);
+                this.trigger_cooldowns[trigger] = now;
+                return true;
+            }
+            // console.log(`[Cooldown] Trigger ${trigger} blocked. Diff: ${diff.toFixed(1)}s <= ${seconds}s`);
+            return false;
+        };
+
+        // 1. Struggle Detection (New Logic)
+        // Window: Last 100 keystrokes
+        // Condition: Revision Ratio < 0.6 AND Idle >= 4.0s
+        if (idle_time >= 4.0) {
+            const WINDOW_SIZE = 100;
+            const recent = this.recent_keystrokes.slice(-WINDOW_SIZE);
+
+            // Debug Log
+            // console.log(`[Monitor] Idle: ${idle_time.toFixed(1)}s, Keystrokes: ${recent.length}/${WINDOW_SIZE}`);
+
+            if (recent.length >= WINDOW_SIZE) { // Wait until 100 data points
+                const backspaceCount = recent.filter(k => k.type === 'BACKSPACE').length;
+                const nonCharCount = recent.filter(k => k.type === 'SPACE' || k.type === 'ENTER').length;
+
+                // Revision Ratio Calculation
+                const effectiveContribution = WINDOW_SIZE - (backspaceCount * 2) - nonCharCount;
+                const revisionRatio = (effectiveContribution + nonCharCount) / WINDOW_SIZE;
+
+                // console.log(`[Monitor] Revision Ratio: ${revisionRatio.toFixed(2)} (Threshold: 0.6)`);
+
+                // Condition: Efficiency < 60%
+                if (revisionRatio < 0.6) {
+                    console.log(`[Monitor] Struggle Detected! Ratio: ${revisionRatio.toFixed(2)}`);
+                    if (checkCooldown('STRUGGLE_DETECTION', 30)) {
+                        // Prevent Idea Spark from triggering immediately after
+                        this.trigger_cooldowns['IDEA_SPARK'] = Date.now() / 1000;
+                        return this.create_payload('STRUGGLE_DETECTION');
+                    }
+                }
+            }
         }
 
-        // Logic C: Triggers
-
-        // 1. Stuck Trigger (Block Detected)
-        // We need to track if we have already reported this Block.
-        // Let's use `reported_block` flag.
-
-        if (this.current_state === 'Block' && !this.reported_block) {
-            this.reported_block = true;
-            return this.create_payload('TIME_STUCK');
-        }
-
-        if (this.current_state === 'Flow') {
-            this.reported_block = false;
-        }
-
-        // 2. Flow Trigger (Ghost Text)
-        // Idle > 2s, Translating OR Reviewing, Flow (not Block)
-        if (idle_time > 2.0 && this.current_state === 'Flow' && (this.current_phase === 'Translating' || this.current_phase === 'Reviewing')) {
-            const time_since_last_trigger = now - this.last_trigger_time;
-            if (time_since_last_trigger > 10.0) {
-                this.last_trigger_time = now;
-                return this.create_payload('FLOW_TRIGGER');
+        // 2. Idea Spark (Idle >= 8.0s)
+        // Trigger a nudge to offer help (On-demand)
+        if (idle_time >= 8.0) {
+            if (checkCooldown('IDEA_SPARK', 10)) {
+                return this.create_payload('IDEA_SPARK');
             }
         }
 
         return null;
     }
 
+    public extendCooldown(trigger: string, seconds: number) {
+        this.trigger_cooldowns[trigger] = (Date.now() / 1000) + seconds;
+        console.log(`[Monitor] Extended cooldown for ${trigger} by ${seconds}s`);
+    }
+
     private reported_block: boolean = false;
 
-    private calculate_phase(): Phase {
-        const doc_length = this.current_text.length;
-        const cpm = this.getCpm();
-        const pause_duration = this.getPauseDuration();
+    // Context Helpers
+    private isInterWordPause(): boolean {
+        const charBefore = this.current_text[this.cursor_index - 1];
+        // Space or normal char, NOT sentence end
+        return charBefore === ' ' || (!!charBefore && !'.?!'.includes(charBefore));
+    }
 
-        const edit_count = this.key_history.filter(k => k === 'EDIT').length;
-        const enter_count = this.key_history.filter(k => k === 'ENTER').length;
-        const total_count = this.key_history.length;
+    private isSentenceEndPause(): boolean {
+        const charBefore = this.current_text[this.cursor_index - 1];
+        return '.?!'.includes(charBefore || '');
+    }
 
-        const edit_ratio = total_count > 0 ? (edit_count / total_count) : 0;
-        const enter_rate = total_count > 0 ? (enter_count / total_count) : 0;
+    private isParagraphEndPause(): boolean {
+        const charBefore = this.current_text[this.cursor_index - 1];
+        return charBefore === '\n';
+    }
 
-        // 1. Planning Phase
-        // DocLength < 50 AND (Pause > 5s OR EnterKeyRate > 0.3)
-        if (doc_length < 50) {
-            if (pause_duration > 5 || enter_rate > 0.3) {
-                return 'Planning';
-            }
-            // If typing fast at start, treat as Translating
-            return 'Translating';
-        }
-
-        // 2. Reviewing vs Translating (DocLength >= 50)
-        const is_cursor_back = (doc_length - this.cursor_index) > 20; // Cursor moved up significantly
-
-        // Reviewing Rules: CPM < 100 OR EditRatio > 0.3 OR Cursor moved up
-        if (cpm < 100 || edit_ratio > 0.3 || is_cursor_back) {
-            return 'Reviewing';
-        }
-
-        // Default to Translating (covers CPM > 150, EditRatio < 0.2, Cursor at end)
-        return 'Translating';
+    private getLastSegmentLength(): number {
+        // Find length of text from last paragraph break (or start) to cursor
+        const textBeforeCursor = this.current_text.substring(0, this.cursor_index - 1); // Exclude current \n
+        const lastNewline = textBeforeCursor.lastIndexOf('\n');
+        if (lastNewline === -1) return textBeforeCursor.length;
+        return textBeforeCursor.length - lastNewline - 1;
     }
 
     private get_summary_history(): LogEntry[] {
@@ -249,6 +337,27 @@ export class MonitorAgent {
         const edit_count = this.key_history.filter(k => k === 'EDIT').length;
         const total_count = this.key_history.length;
         return total_count > 0 ? (edit_count / total_count) : 0;
+    }
+
+    public getRevisionRatio() {
+        // Window: Last 100 keystrokes
+        const WINDOW_SIZE = 100;
+        // Get last 100 keystrokes (no time pruning for this metric, just last N actions)
+        const recent = this.recent_keystrokes.slice(-WINDOW_SIZE);
+
+        if (recent.length === 0) return 1.0; // Default to 100% efficiency if no data
+
+        const backspaceCount = recent.filter(k => k.type === 'BACKSPACE').length;
+        // Formula: (100 - 2*BS) / 100
+        // We use the actual length if < 100 for early feedback
+        const total = recent.length;
+
+        // Effective Contribution = Total - (BS * 2) - NonChar
+        // Ratio = (Effective + NonChar) / Total
+        // Simplified: (Total - 2*BS) / Total
+
+        const ratio = (total - (backspaceCount * 2)) / total;
+        return Math.max(0, ratio); // Clamp to 0
     }
 }
 

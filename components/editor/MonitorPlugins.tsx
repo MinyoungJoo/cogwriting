@@ -27,6 +27,7 @@ export function KeystrokeMonitorPlugin() {
                     action: 'keydown'
                 });
                 monitorAgent.on_input_event(event.key);
+                useStore.getState().updateMetrics();
                 return false;
             },
             COMMAND_PRIORITY_NORMAL
