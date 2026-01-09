@@ -74,7 +74,7 @@ interface AppState {
     // Intervention Actions
     setInterventionStatus: (status: 'idle' | 'detected' | 'requesting' | 'completed' | 'failed') => void;
     setPendingPayload: (payload: MonitorPayload | null) => void;
-    triggerIntervention: (overrideContextData?: any, targetStrategyId?: string) => Promise<void>;
+    triggerIntervention: (overrideContextData?: any, targetStrategyId?: StrategyID) => Promise<void>;
 
     // Feedback State
     feedbackItems: Array<{
@@ -219,9 +219,18 @@ const useStore = create<AppState>()(persist((set, get) => ({
                 strategy: targetStrategy
             }, targetStrategy);
 
-            const payload = { ...get().pendingPayload, writing_context: get().content, user_prompt: "Please provide detailed feedback on this diagnosis." };
+            const currentPayload = get().pendingPayload || {
+                trigger_reason: 'STRUGGLE_DETECTION', // Default context if missing
+                current_phase: get().phase,
+                cognitive_state: get().cognitiveState,
+                stuck_duration: 0,
+                state_history: [],
+                writing_context: get().content,
+                user_prompt: null
+            };
+            const payload = { ...currentPayload, writing_context: get().content, user_prompt: "Please provide detailed feedback on this diagnosis." };
             get().setPendingPayload(payload);
-            triggerIntervention();
+            triggerIntervention(undefined, targetStrategy);
         }
     },
 
@@ -393,7 +402,7 @@ const useStore = create<AppState>()(persist((set, get) => ({
     unreadDiagnosis: {},
     markDiagnosisRead: (id) => set((state) => ({ unreadDiagnosis: { ...state.unreadDiagnosis, [id]: false } })),
 
-    triggerIntervention: async (overrideContextData?: any, targetStrategyId?: string) => {
+    triggerIntervention: async (overrideContextData?: any, targetStrategyId?: StrategyID) => {
         const { selectedStrategy, content } = get();
 
 
@@ -429,7 +438,7 @@ const useStore = create<AppState>()(persist((set, get) => ({
             return;
         }
 
-        const strategy = getStrategy(strategyIdToUse);
+        const strategy = getStrategy(strategyIdToUse as StrategyID);
 
         if (!strategy) {
             console.warn('Strategy object not found for ID:', strategyIdToUse);
