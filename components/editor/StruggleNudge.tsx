@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import useStore from '@/store/useStore';
-import { Search, X, LayoutList, Palette } from 'lucide-react';
+import { Search, X, LayoutList, Palette, Check } from 'lucide-react';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { $getSelection, $isRangeSelection } from 'lexical';
+import { $getSelection, $isRangeSelection, $isTextNode } from 'lexical';
 
 export const StruggleNudge = () => {
     if (typeof window === 'undefined') return null;
@@ -11,6 +11,7 @@ export const StruggleNudge = () => {
     const [editor] = useLexicalComposerContext();
     const isStruggleDetected = useStore(state => state.isStruggleDetected);
     const setStruggleDetected = useStore(state => state.setStruggleDetected);
+    const isIdeaSparkDetected = useStore(state => state.isIdeaSparkDetected); // Mutual exclusion check
     const triggerIntervention = useStore(state => state.triggerIntervention);
     const interventionStatus = useStore(state => state.interventionStatus);
     const struggleDiagnosis = useStore(state => state.struggleDiagnosis);
@@ -42,9 +43,14 @@ export const StruggleNudge = () => {
                     if (rect && (rect.top !== 0 || rect.left !== 0)) {
                         // Use fixed positioning (viewport relative)
                         // Place it below the cursor
+                        // Clamp X to prevent overflow (UI width ~260px)
+                        const UI_WIDTH = 280;
+                        const viewportWidth = window.innerWidth;
+                        const left = Math.max(10, Math.min(rect.left, viewportWidth - UI_WIDTH));
+
                         setPosition({
                             top: rect.bottom + 10,
-                            left: rect.left
+                            left: left
                         });
                     }
                 }
@@ -57,7 +63,7 @@ export const StruggleNudge = () => {
     const hasResult = !!struggleDiagnosis;
     const showResultUI = isDiagnosing || hasResult;
     const showNudgeUI = isStruggleDetected && !showResultUI;
-    const isVisible = showNudgeUI || showResultUI;
+    const isVisible = (showNudgeUI || showResultUI) && !isIdeaSparkDetected;
 
     useEffect(() => {
         // Update position if any UI is active
@@ -104,7 +110,7 @@ export const StruggleNudge = () => {
     };
 
     // Return null if nothing to show
-    if (!showNudgeUI && !showResultUI) {
+    if (!isVisible) {
         return null;
     }
 
@@ -151,18 +157,65 @@ export const StruggleNudge = () => {
 
                                     if ($isRangeSelection(selection)) {
                                         focalSegment = selection.getTextContent();
-                                        // If selection is empty (collapsed), get the current paragraph
+                                        // If selection is empty (collapsed), get the current sentence
                                         if (!focalSegment) {
-                                            const anchorNode = selection.anchor.getNode();
+                                            const anchor = selection.anchor;
+                                            const anchorNode = anchor.getNode();
+
+                                            // 1. Get the Top Level Element (Paragraph)
                                             const element = anchorNode.getKey() === 'root' ? anchorNode : anchorNode.getTopLevelElementOrThrow();
-                                            focalSegment = element.getTextContent();
+                                            const paragraphText = element.getTextContent();
+
+                                            // 2. Calculate Cursor Offset within the Paragraph
+                                            let cursorOffset = anchor.offset;
+
+                                            // If anchor is TextNode, we need to add lengths of previous siblings
+                                            if ($isTextNode(anchorNode)) {
+                                                let sibling = anchorNode.getPreviousSibling();
+                                                while (sibling) {
+                                                    cursorOffset += sibling.getTextContentSize();
+                                                    sibling = sibling.getPreviousSibling();
+                                                }
+                                            }
+                                            // If anchor is Element (e.g. at start of block), offset is usually child index, but for text extraction usually 0 if empty
+
+                                            // 3. Find Sentence Boundaries
+                                            // Search backwards for [.?!] + space/end
+                                            const sentenceEndRegex = /[.?!]\s+/;
+
+                                            // Simple backward search
+                                            let start = 0;
+                                            let end = paragraphText.length;
+
+                                            // Find start: last invalid punctuation before cursor
+                                            for (let i = cursorOffset - 1; i >= 0; i--) {
+                                                const char = paragraphText[i];
+                                                if (['.', '?', '!'].includes(char)) {
+                                                    // Check if it's really an end (followed by space or is end)
+                                                    // But we are going backwards. 
+                                                    // If we hit ., we assume it's the end of the PREVIOUS sentence.
+                                                    // So our sentence starts at i + 1 (plus skip whitespace)
+                                                    start = i + 1;
+                                                    break;
+                                                }
+                                            }
+
+                                            // Find end: first punctuation after cursor
+                                            for (let i = cursorOffset; i < paragraphText.length; i++) {
+                                                const char = paragraphText[i];
+                                                if (['.', '?', '!'].includes(char)) {
+                                                    end = i + 1; // Include the punctuation
+                                                    break;
+                                                }
+                                            }
+
+                                            focalSegment = paragraphText.slice(start, end).trim();
                                         }
                                     }
 
-                                    triggerIntervention('S2_DIAGNOSIS', false, undefined, undefined, {
-                                        focalSegment,
-                                        fullText
-                                    });
+                                    triggerIntervention({
+                                        writing_context: focalSegment
+                                    }, 'S2_DIAGNOSIS');
                                 });
                             }}
                             className="w-full py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1"
@@ -183,31 +236,73 @@ export const StruggleNudge = () => {
 
                 {/* 3. Result UI (Show Diagnosis) */}
                 {hasResult && !isDiagnosing && (
-                    <div className="space-y-2">
-                        <div className="text-xs text-gray-400 mb-2 italic">"이런 부분에서 어려움을 겪고 계신가요?"</div>
-                        {[
-                            { id: 'logic', label: '논리 (Logic)', icon: Search, color: 'text-blue-400', content: struggleDiagnosis.logic },
-                            { id: 'structure', label: '구조 (Structure)', icon: LayoutList, color: 'text-green-400', content: struggleDiagnosis.structure },
-                            { id: 'tone', label: '표현 (Tone)', icon: Palette, color: 'text-purple-400', content: struggleDiagnosis.tone }
-                        ].map((item) => (
-                            <button
-                                key={item.id}
-                                onClick={() => acceptStruggleDiagnosis(item.id as any)}
-                                className="w-full text-left p-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg transition-colors group"
-                            >
-                                <div className="flex items-center gap-2 mb-1">
-                                    <item.icon size={13} className={item.color} />
-                                    <span className="text-xs font-bold text-gray-200">{item.label}</span>
-                                </div>
-                                <div className="text-[11px] text-gray-400 leading-snug group-hover:text-gray-300">
-                                    {item.content}
-                                </div>
-                            </button>
-                        ))}
-                    </div>
+                    <StruggleResultList
+                        diagnosis={struggleDiagnosis}
+                        onConfirm={(selected) => {
+                            useStore.getState().acceptMultipleDiagnoses(selected);
+                        }}
+                    />
                 )}
             </div>
         </div>,
         document.body
     );
 };
+
+function StruggleResultList({ diagnosis, onConfirm }: { diagnosis: any, onConfirm: (selected: string[]) => void }) {
+    const [selected, setSelected] = useState<string[]>([]);
+    const { Check } = require('lucide-react'); // Lazy import for icon or just use existing imports
+
+    const toggleSelection = (id: string) => {
+        if (selected.includes(id)) {
+            setSelected(selected.filter(s => s !== id));
+        } else {
+            setSelected([...selected, id]);
+        }
+    };
+
+    const items = [
+        { id: 'logic', label: '논리 (Logic)', icon: Search, color: 'text-blue-400', content: diagnosis.logic },
+        { id: 'structure', label: '구조 (Structure)', icon: LayoutList, color: 'text-green-400', content: diagnosis.structure },
+        { id: 'tone', label: '표현 (Tone)', icon: Palette, color: 'text-purple-400', content: diagnosis.tone }
+    ];
+
+    return (
+        <div className="space-y-2">
+            <div className="text-xs text-gray-400 mb-2 italic">"더 확인하고 싶은 항목을 선택하세요"</div>
+            {items.map((item) => {
+                const isSelected = selected.includes(item.id);
+                return (
+                    <button
+                        key={item.id}
+                        onClick={() => toggleSelection(item.id)}
+                        className={`w-full text-left p-2.5 border rounded-lg transition-all group ${isSelected
+                            ? 'bg-blue-900/30 border-blue-500 ring-1 ring-blue-500'
+                            : 'bg-gray-800 hover:bg-gray-700 border-gray-700'
+                            }`}
+                    >
+                        <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                                <item.icon size={13} className={item.color} />
+                                <span className={`text-xs font-bold ${isSelected ? 'text-blue-300' : 'text-gray-200'}`}>{item.label}</span>
+                            </div>
+                            {isSelected && <Check size={12} className="text-blue-400" />}
+                        </div>
+                        <div className={`text-[11px] leading-snug ${isSelected ? 'text-gray-200' : 'text-gray-400 group-hover:text-gray-300'}`}>
+                            {item.content}
+                        </div>
+                    </button>
+                );
+            })}
+
+            <button
+                onClick={() => onConfirm(selected)}
+                disabled={selected.length === 0}
+                className="w-full mt-2 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1"
+            >
+                <Check size={12} />
+                선택 항목 확인 ({selected.length})
+            </button>
+        </div>
+    );
+}

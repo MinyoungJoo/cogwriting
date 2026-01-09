@@ -53,7 +53,7 @@ export default function SystemFeedbackPlugin() {
                 // Auto-trigger for IDEA_SPARK_PREFETCH (Silent)
                 if (pendingPayload.trigger_reason === 'IDEA_SPARK_PREFETCH') {
                     // Pre-fetch Idea Spark silently (so it's ready by 10s)
-                    triggerIntervention('S1_IDEA_SPARK', true);
+                    triggerIntervention({}, 'S1_IDEA_SPARK');
                     // Reset status to idle so subsequent triggers (like real IDEA_SPARK) are not blocked
                     setInterventionStatus('idle');
                 } else if (pendingPayload.trigger_reason === 'IDEA_SPARK') {

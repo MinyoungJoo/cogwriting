@@ -54,31 +54,21 @@ export function getStrategy(id: StrategyID): Strategy {
                 uiMessage: '🩺 진단 중...',
                 systemInstruction: `
             [Goal]: Diagnose the user's writing struggle and recommend the best tool.
-            [Context]: The writer has hit a "Struggle Point" (high revision rate & pauses).
-            - Full Context: [FULL_TEXT] (Provided in Writing Context)
-            - Focal Segment (where struggle occurs): >>> [FOCAL_SEGMENT] <<< (Provided in Writing Context)
+            [Context]: The user is rewriting this section repeatedly.
+            [Role]: A helpful, empathetic writing assistant.
+            [Action]:
+            Analyze the text and provide a very brief (1 sentence) diagnosis for EACH of the following aspects:
+            1. Logic (coherence, argument)
+            2. Structure (flow, organization)
+            3. Tone (expression, style)
 
-            [Task]:
-            Analyze the [FOCAL_SEGMENT] in relation to the [FULL_TEXT].
-            Provide a specific, one-sentence diagnostic hypothesis for each of the following three categories.
-            Focus on the "Why": why is the writer stuck?
-
-            [Diagnostic Guidelines]:
-            1. Logic: Is there a gap in reasoning or a contradiction with previous statements?
-               (e.g., "전제와 결론 사이의 논리적 비약 때문에 연결 문장을 고민하시는 것 같군요.")
-            2. Structure: Is this segment deviating from the overall flow or outline?
-               (e.g., "현재 내용이 서론의 주제와 멀어지고 있어 흐름을 잡기 어려워 보입니다.")
-            3. Tone: Is there a struggle with word choice or maintaining a consistent voice?
-               (e.g., "학술적 문체와 구어체 사이에서 적절한 단어를 선택하는 데 어려움이 느껴집니다.")
-
-            [Output Format]:
-            You MUST return a valid JSON object. Do NOT wrap it in markdown code blocks.
-            Structure:
-            {
-              "logic": "Brief feedback on logic (Korean)...",
-              "structure": "Brief feedback on structure (Korean)...",
-              "tone": "Brief feedback on tone (Korean)..."
-            }
+            [Condition: Short or Empty Text]
+            If the provided text is very short (less than 10 words) or empty:
+            - Do NOT provide critical feedback or point out flaws.
+            - Instead, provide GENERIC, ENCOURAGING advice or a "Next Step" suggestion for each aspect.
+            - Example (Logic): "주장의 핵심을 먼저 한 문장으로 정리해보세요."
+            - Example (Structure): "서론-본론-결론의 개요를 먼저 잡아보는 건 어떨까요?"
+            - Example (Tone): "독자에게 전달하고 싶은 분위기를 먼저 정해보세요."
             `.trim(),
             };
         case 'S1_IDEA_SPARK':
@@ -122,8 +112,11 @@ export function getStrategy(id: StrategyID): Strategy {
                 id: 'S1_GAP_FILLING',
                 uiMessage: '✨ 빈칸 채우기 (Gap Filling)',
                 systemInstruction: `
-          [Goal]: Improve coherence and flow.
+          [Goal]: Improve coherence and flow based on the genre.
           [Action]: The user has left a gap marked by ( ). Suggest a suitable connecting word, phrase, or sentence to bridge the context before and after the gap.
+          [Genre-Specific Guidance]:
+          - IF Creative: Focus on narrative flow, sensory transitions, or emotional continuity.
+          - IF Argumentative: Focus on logical connectors (e.g., "furthermore", "conversely") and ensuring the evidence supports the claim.
           [Output]: Output ONLY the suggested text.
           [Language]: Respond in Korean.
         `.trim()
@@ -133,14 +126,15 @@ export function getStrategy(id: StrategyID): Strategy {
                 id: 'S1_REFINEMENT',
                 uiMessage: '✨ 표현 다듬기 (Refinement)',
                 systemInstruction: `
-          [Goal]: "Show, Don't Tell". Make the writing more concrete and sensory.
-          [Action]: The user provided a word/phrase in ( ). Replace abstract terms with specific, sensory, or evocative descriptions.
-          [Example]:
-          Input: 슬펐다
-          Output: 가슴 한구석이 뻥 뚫린 듯 시려왔다
-
-          Input: 화났다
-          Output: 주먹을 꽉 쥐어 손톱이 살을 파고들었다 
+          [Goal]: Enhance the impact of the word/phrase in ( ).
+          [Action]: The user provided a word/phrase in ( ). Replace abstract terms with specific descriptions.
+          [Genre-Specific Guidance]:
+          - IF Creative: Follow "Show, Don't Tell". Replace abstract emotions with sensory details (sight, sound, touch). 
+            Input: 슬펐다
+             Output: 목이 메어 아무 말도 할 수 없었다
+          - IF Argumentative: Focus on "Clarity and Authority". Replace weak or informal words with precise, academic, or professional alternatives.
+            Input: 나쁘다
+             Output: 부작용을 초래할 가능성이 크다
 
           [Output Rules]:
           1. Output ONLY the refined text. Do NOT enclose it in parentheses.
@@ -167,6 +161,9 @@ export function getStrategy(id: StrategyID): Strategy {
                 uiMessage: '✨ 아이디어 확장 (Expansion)',
                 systemInstruction: `
           [Goal]: Expand a seed idea into full content.
+          [Genre-Specific Guidance]:
+          - IF Creative: Elaborate on the atmosphere, the character's internal state, or the vividness of the scene. Make it immersive.
+          - IF Argumentative: Elaborate on the reasoning, provide a hypothetical example, or explain the significance of the keyword in the context of the argument.
           [Action]: The user provided a seed keyword/phrase. Look for the token [EXPAND: keyword] in the 'Writing Context'.
           [Context Usage]: The [EXPAND: keyword] token marks the insertion point. Use the 'keyword' inside it as your seed. Expand this keyword into 2-3 well-written sentences that flow naturally with the surrounding text.
           [Output Rules]:

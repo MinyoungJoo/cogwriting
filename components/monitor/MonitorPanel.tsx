@@ -1,14 +1,18 @@
 'use client';
 
 import useStore from '@/store/useStore';
-import { Activity, AlertCircle, Clock } from 'lucide-react';
+import { Activity, AlertCircle, Clock, Settings } from 'lucide-react';
 
 export default function MonitorPanel() {
     const {
         cpm, phase, cognitiveState, actionHistory, docLength, pauseDuration, cursorPos, editRatio, revisionRatio,
         feedbackItems, focusedFeedbackId, setFocusedFeedbackId, setSelectedStrategy,
-        isSystemInitiatedEnabled, toggleSystemInitiated
+        isSystemInitiatedEnabled, toggleSystemInitiated,
+        setIsGoalSet // Import setIsGoalSet
     } = useStore();
+
+    // Import monitorAgent to reset
+    const { monitorAgent } = require('@/src/lib/MonitorAgent');
 
     return (
         <div className="w-[300px] bg-gray-900 text-white p-4 flex flex-col gap-6 font-mono text-sm border-r border-gray-800">
@@ -17,6 +21,16 @@ export default function MonitorPanel() {
                     <h1 className="text-xl font-bold text-blue-400 mb-1">Monitoring Agent</h1>
                     <div className="text-xs text-gray-500">System 1 & 2 Integration</div>
                 </div>
+                <button
+                    onClick={() => {
+                        setIsGoalSet(false);
+                        monitorAgent.resetSession();
+                    }}
+                    className="p-1 hover:bg-gray-800 rounded transition-colors text-gray-500 hover:text-white"
+                    title="Configure Goal"
+                >
+                    <Settings size={16} />
+                </button>
             </div>
 
 

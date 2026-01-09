@@ -192,6 +192,8 @@ export class MonitorAgent {
             return false;
         };
 
+
+
         // 1. Struggle Detection (New Logic)
         // Window: Last 100 keystrokes
         // Condition: Revision Ratio < 0.6 AND Idle >= 4.0s
@@ -215,9 +217,9 @@ export class MonitorAgent {
                 // Condition: Efficiency < 60%
                 if (revisionRatio < 0.6) {
                     console.log(`[Monitor] Struggle Detected! Ratio: ${revisionRatio.toFixed(2)}`);
-                    if (checkCooldown('STRUGGLE_DETECTION', 30)) {
+                    if (checkCooldown('STRUGGLE_DETECTION', 60)) {
                         // Prevent Idea Spark from triggering immediately after
-                        this.trigger_cooldowns['IDEA_SPARK'] = Date.now() / 1000;
+                        // this.trigger_cooldowns['IDEA_SPARK'] = Date.now() / 1000; (Removed: UI handles mutual exclusion)
                         return this.create_payload('STRUGGLE_DETECTION');
                     }
                 }
@@ -227,7 +229,7 @@ export class MonitorAgent {
         // 2. Idea Spark (Idle >= 8.0s)
         // Trigger a nudge to offer help (On-demand)
         if (idle_time >= 8.0) {
-            if (checkCooldown('IDEA_SPARK', 10)) {
+            if (checkCooldown('IDEA_SPARK', 60)) {
                 return this.create_payload('IDEA_SPARK');
             }
         }
@@ -358,6 +360,34 @@ export class MonitorAgent {
 
         const ratio = (total - (backspaceCount * 2)) / total;
         return Math.max(0, ratio); // Clamp to 0
+    }
+
+    public resetSession() {
+        console.log('[MonitorAgent] Session Reset');
+        this.last_action_time = Date.now() / 1000;
+        this.last_trigger_time = 0;
+        this.action_history = [];
+        this.key_history = [];
+        this.state_history_log = [];
+
+        // WPM Init
+        this.start_time = Date.now();
+        this.prev_text_length = 0;
+        this.total_chars_typed = 0;
+
+        // Advanced Metrics Init
+        this.last_burst_length = 0;
+        this.current_burst_length = 0;
+        this.revision_count_in_sentence = 0;
+        this.keystrokes_in_current_sentence = 0;
+        this.distant_revision_count = 0;
+        this.recent_keystrokes = [];
+        this.total_pause_time = 0;
+        this.total_active_time = 0;
+        this.trigger_cooldowns = {};
+
+        this.current_phase = 'Planning';
+        this.current_state = 'Flow';
     }
 }
 

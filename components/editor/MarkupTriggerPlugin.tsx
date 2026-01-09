@@ -100,6 +100,28 @@ export default function MarkupTriggerPlugin() {
                     triggerIntervention();
                     return;
                 }
+
+                // 4. Idea Spark Trigger: /?
+                const sparkMatch = textBeforeCursor.match(/\/\?\s*$/);
+                if (sparkMatch) {
+                    console.log('Idea Spark Trigger Detected');
+                    const strategy = getStrategy('S1_IDEA_SPARK');
+                    const payload = monitorAgent.manual_trigger('Help me find ideas');
+
+                    // We need to tell the system this is a "Spark" trigger so the UI appears correctly
+                    setPendingPayload(payload);
+                    setGhostTextReplacementLength(sparkMatch[0].length);
+
+                    // Allow UI to position itself at cursor
+                    useStore.getState().setGhostTextPosition({
+                        key: node.getKey(),
+                        offset: cursorOffset - sparkMatch[0].length // Start of '(!)'
+                    });
+
+                    useStore.getState().setSelectedStrategy('S1_IDEA_SPARK');
+                    triggerIntervention();
+                    return;
+                }
             });
         });
     }, [editor, setPendingPayload, setInterventionStatus, setGhostTextReplacementLength, triggerIntervention]);

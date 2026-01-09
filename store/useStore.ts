@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Phase, CognitiveState, StrategyID, Strategy, selectStrategy } from '@/src/lib/strategy';
+import { Phase, CognitiveState, StrategyID, Strategy, selectStrategy, getStrategy } from '@/src/lib/strategy';
 import { MonitorPayload, monitorAgent } from '@/src/lib/MonitorAgent';
 
 interface Keystroke {
@@ -32,13 +32,17 @@ interface AppState {
     suggestionIndex: number;
 
     // Intervention State
-    interventionStatus: 'idle' | 'detected' | 'requesting' | 'completed';
+    // Intervention State
+    interventionStatus: 'idle' | 'detected' | 'requesting' | 'completed' | 'failed';
     isStruggleDetected: boolean;
     setStruggleDetected: (detected: boolean) => void;
     struggleDiagnosis: { logic: string; structure: string; tone: string } | null;
     setStruggleDiagnosis: (diagnosis: { logic: string; structure: string; tone: string } | null) => void;
-    struggleContext: { focalSegment: string; fullText: string } | null; // Store context for follow-up
+    struggleContext: { focalSegment: string; fullText: string } | null;
     acceptStruggleDiagnosis: (type: 'logic' | 'structure' | 'tone') => void;
+    unreadDiagnosis: Record<string, boolean>;
+    markDiagnosisRead: (id: string) => void;
+    acceptMultipleDiagnoses: (types: string[]) => void;
     isIdeaSparkDetected: boolean;
     setIdeaSparkDetected: (detected: boolean) => void;
     pendingPayload: MonitorPayload | null;
@@ -48,7 +52,7 @@ interface AppState {
     pauseDuration: number;
     cursorPos: number;
     editRatio: number;
-    revisionRatio: number; // New metric for short-term struggle detection
+    revisionRatio: number;
 
     addKeystroke: (k: Keystroke) => void;
     setContent: (c: string) => void;
@@ -68,9 +72,9 @@ interface AppState {
     setMetrics: (metrics: { docLength: number; pauseDuration: number; cursorPos: number; editRatio: number; revisionRatio: number }) => void;
 
     // Intervention Actions
-    setInterventionStatus: (status: 'idle' | 'detected' | 'requesting' | 'completed') => void;
+    setInterventionStatus: (status: 'idle' | 'detected' | 'requesting' | 'completed' | 'failed') => void;
     setPendingPayload: (payload: MonitorPayload | null) => void;
-    triggerIntervention: (forceStrategyId?: string, silent?: boolean, customPrompt?: string, customTriggerReason?: string, contextData?: any) => Promise<void>;
+    triggerIntervention: (overrideContextData?: any, targetStrategyId?: string) => Promise<void>;
 
     // Feedback State
     feedbackItems: Array<{
@@ -104,6 +108,16 @@ interface AppState {
     // Writing Genre
     writingGenre: 'creative' | 'argumentative' | null;
     setWritingGenre: (genre: 'creative' | 'argumentative' | null) => void;
+
+    // Goal Setting
+    writingTopic: string | null;
+    setWritingTopic: (topic: string) => void;
+    writingAudience: string | null;
+    setWritingAudience: (audience: string) => void;
+    userGoal: string | null;
+    setUserGoal: (goal: string) => void;
+    isGoalSet: boolean;
+    setIsGoalSet: (isSet: boolean) => void;
 }
 
 const useStore = create<AppState>()(persist((set, get) => ({
@@ -114,7 +128,34 @@ const useStore = create<AppState>()(persist((set, get) => ({
     setSystemMode: (mode) => set({ systemMode: mode }),
 
     writingGenre: null,
-    setWritingGenre: (genre) => set({ writingGenre: genre }),
+    setWritingGenre: (genre) => {
+        let topic = '';
+        let audience = '';
+
+        if (genre === 'creative') {
+            topic = '최근 인상 깊었던 실제 경험을 하나 떠올려서 1인칭 주인공 시점의 영화 시나리오 쓰기';
+            audience = '소설을 즐기는 일반 독자';
+        } else if (genre === 'argumentative') {
+            topic = 'AI 생성 이미지 콘텐츠는 예술의 진입 장벽을 낮추는 혁신인가, 창작의 의미를 붕괴시키는가?를 주제에 대해 의견과 근거를 적기.';
+            audience = '글쓰기 선생님, 교수님';
+        }
+
+        set({
+            writingGenre: genre,
+            writingTopic: topic,
+            writingAudience: audience
+        });
+    },
+
+    // Goal Setting Defaults & Actions
+    writingTopic: '최근 인상 깊었던 실제 경험을 하나 떠올려서 1인칭 주인공 시점의 영화 시나리오를 써보세요', // Predefined default
+    setWritingTopic: (topic) => set({ writingTopic: topic }),
+    writingAudience: 'General Audience', // Predefined default
+    setWritingAudience: (audience) => set({ writingAudience: audience }),
+    userGoal: null,
+    setUserGoal: (goal) => set({ userGoal: goal }),
+    isGoalSet: false,
+    setIsGoalSet: (isSet) => set({ isGoalSet: isSet }),
 
     keystrokes: [],
     content: '',
@@ -145,7 +186,6 @@ const useStore = create<AppState>()(persist((set, get) => ({
     acceptStruggleDiagnosis: (type) => {
         const { struggleDiagnosis, addChatMessage, triggerIntervention } = get();
         if (struggleDiagnosis) {
-            // Extend cooldown for Struggle Detection since user accepted help
             monitorAgent.extendCooldown('STRUGGLE_DETECTION', 60);
 
             let targetStrategy: StrategyID = 'S2_LOGIC_AUDITOR';
@@ -170,26 +210,81 @@ const useStore = create<AppState>()(persist((set, get) => ({
                 selectedStrategy: targetStrategy,
                 isStruggleDetected: false,
                 struggleDiagnosis: null,
-                interventionStatus: 'idle' // Reset status to allow future triggers
+                interventionStatus: 'idle'
             });
 
-            // 1. Add the Diagnosis as a starting point in chat
             addChatMessage({
                 role: 'assistant',
                 content: `[Diagnosis]: ${diagnosisText}`,
                 strategy: targetStrategy
             }, targetStrategy);
 
-            // 2. Automatically trigger detailed feedback
-            // We pass the diagnosis as context for the detailed analysis
-            const { struggleContext } = get();
-            triggerIntervention(
-                targetStrategy,
-                false,
-                `The user has received this diagnosis: "${diagnosisText}". Please provide a detailed analysis and specific improvement suggestions based on this diagnosis.`,
-                undefined,
-                struggleContext // Pass the saved context (focalSegment, fullText)
-            );
+            const payload = { ...get().pendingPayload, writing_context: get().content, user_prompt: "Please provide detailed feedback on this diagnosis." };
+            get().setPendingPayload(payload);
+            triggerIntervention();
+        }
+    },
+
+    acceptMultipleDiagnoses: (types: string[]) => {
+        const { struggleDiagnosis, addChatMessage, triggerIntervention } = get();
+        if (struggleDiagnosis && types.length > 0) {
+            monitorAgent.extendCooldown('STRUGGLE_DETECTION', 60);
+
+            const strategiesToTrigger: { id: StrategyID, text: string, name: string }[] = [];
+
+            // Map selections to strategies
+            for (const type of types) {
+                if (type === 'logic') {
+                    strategiesToTrigger.push({
+                        id: 'S2_LOGIC_AUDITOR',
+                        text: struggleDiagnosis.logic,
+                        name: 'Logic'
+                    });
+                }
+                if (type === 'structure') {
+                    strategiesToTrigger.push({
+                        id: 'S2_STRUCTURAL_MAPPING',
+                        text: struggleDiagnosis.structure,
+                        name: 'Structure'
+                    });
+                }
+                if (type === 'tone') {
+                    strategiesToTrigger.push({
+                        id: 'S2_TONE_REFINEMENT',
+                        text: struggleDiagnosis.tone,
+                        name: 'Tone'
+                    });
+                }
+            }
+
+            if (strategiesToTrigger.length === 0) return;
+
+            // 1. Distribute Messages to Respective Tools
+            strategiesToTrigger.forEach(strat => {
+                addChatMessage({
+                    role: 'assistant',
+                    content: `[Diagnosis]: ${strat.text}\n\n글쓰기의 **${strat.name}**에 대한 심층 분석을 진행하겠습니다.`,
+                    strategy: strat.id
+                }, strat.id);
+            });
+
+            // 2. Activate the FIRST tool in UI
+            const primaryStrategy = strategiesToTrigger[0];
+
+            set({
+                selectedStrategy: primaryStrategy.id,
+                isStruggleDetected: false,
+                struggleDiagnosis: null
+            });
+
+            // 3. Trigger Analysis for ALL selected tools (Parallel)
+            strategiesToTrigger.forEach(strat => {
+                const payloadOverride = {
+                    writing_context: get().content,
+                    user_prompt: `Based on the diagnosis: "${strat.text}", please provide a detailed audit and actionable suggestions.`
+                };
+                triggerIntervention(payloadOverride, strat.id);
+            });
         }
     },
     isIdeaSparkDetected: false,
@@ -251,7 +346,14 @@ const useStore = create<AppState>()(persist((set, get) => ({
         // Handle System Initiated Triggers
         if (payload && get().isSystemInitiatedEnabled) {
             set({ pendingPayload: payload });
-            get().triggerIntervention();
+
+            if (payload.trigger_reason === 'STRUGGLE_DETECTION') {
+                set({ isStruggleDetected: true });
+            } else if (payload.trigger_reason === 'IDEA_SPARK') {
+                set({ isIdeaSparkDetected: true });
+            }
+            // Do NOT auto-trigger otherwise.
+            // Explicitly ignore other reasons unless we add logic for them.
         }
 
         set({
@@ -288,258 +390,208 @@ const useStore = create<AppState>()(persist((set, get) => ({
     setInterventionStatus: (status) => set({ interventionStatus: status }),
     setPendingPayload: (payload) => set({ pendingPayload: payload }),
 
-    triggerIntervention: async (forceStrategyId?: string, silent: boolean = false, customPrompt?: string, customTriggerReason?: string, contextData?: any) => {
-        const { phase, cognitiveState, pendingPayload, selectedStrategy, interventionStatus } = get();
+    unreadDiagnosis: {},
+    markDiagnosisRead: (id) => set((state) => ({ unreadDiagnosis: { ...state.unreadDiagnosis, [id]: false } })),
 
-        // Prevent duplicate calls if already requesting
-        if (interventionStatus === 'requesting') {
-            console.warn('[triggerIntervention] Already requesting, skipping.');
-            return;
-        }
+    triggerIntervention: async (overrideContextData?: any, targetStrategyId?: string) => {
+        const { selectedStrategy, content } = get();
 
-        // If Struggle Detection triggered, just update UI state
-        // If Struggle Detection triggered, just update UI state
-        if (pendingPayload && pendingPayload.trigger_reason === 'STRUGGLE_DETECTION' && !forceStrategyId) {
-            set({ isStruggleDetected: true });
 
-            // Get context snippet
-            const { content, cursorPos, pauseDuration, revisionRatio } = get();
-            const start = Math.max(0, cursorPos - 10);
-            const end = Math.min(content.length, cursorPos + 10);
-            const snippet = content.slice(start, end).replace(/\n/g, ' ');
 
-            // Log to Monitor Panel
-            get().addFeedbackItem({
-                trigger: 'Struggle Detected',
-                context: `Ratio: ${(revisionRatio * 100).toFixed(0)}%, Idle: ${pauseDuration.toFixed(1)}s | "${snippet}..."`,
-                nodeKey: null,
-                offset: null
-            });
+        let strategyIdToUse = targetStrategyId || selectedStrategy;
 
-            return;
-        }
+        // Auto-select fallback logic
+        if (!strategyIdToUse) {
+            const payload: any = get().pendingPayload;
 
-        // If Idea Spark triggered, just update UI state
-        if (pendingPayload && pendingPayload.trigger_reason === 'IDEA_SPARK' && !forceStrategyId) {
-            console.log('[triggerIntervention] Early return for Idea Spark Nudge');
-            set({ isIdeaSparkDetected: true });
-
-            // Get context snippet
-            const { content, cursorPos, pauseDuration } = get();
-            const start = Math.max(0, cursorPos - 10);
-            const end = Math.min(content.length, cursorPos + 10);
-            const snippet = content.slice(start, end).replace(/\n/g, ' ');
-
-            // Log to Monitor Panel
-            get().addFeedbackItem({
-                trigger: 'Idea Spark',
-                context: `Idle: ${pauseDuration.toFixed(1)}s | "${snippet}..."`,
-                nodeKey: null,
-                offset: null
-            });
-
-            return;
-        }
-
-        if (!pendingPayload) {
-            console.log('[triggerIntervention] No pending payload');
-            return;
-        }
-
-        // 1. Determine Strategy
-        let strategy: Strategy | null = null;
-
-        if (forceStrategyId) {
-            const { getStrategy } = require('@/src/lib/strategy');
-            strategy = getStrategy(forceStrategyId);
-        } else if (selectedStrategy) {
-            const { getStrategy } = require('@/src/lib/strategy');
-            strategy = getStrategy(selectedStrategy);
-        } else if (pendingPayload) {
-            // Auto-select based on trigger reason
-            const { getStrategy } = require('@/src/lib/strategy');
-            switch (pendingPayload.trigger_reason) {
-                case 'GHOST_TEXT':
-                    strategy = getStrategy('S1_GHOST_TEXT');
-                    break;
-                case 'IDEA_SPARK':
-                    strategy = getStrategy('S1_IDEA_SPARK');
-                    break;
-                default:
-                    strategy = selectStrategy(phase, cognitiveState);
-            }
-            if (!strategy && pendingPayload.trigger_reason) {
-                switch (pendingPayload.trigger_reason) {
-                    case 'LOGIC_AUDITOR': strategy = getStrategy('S2_LOGIC_AUDITOR'); break;
-                    case 'STRUCTURAL_MAPPING': strategy = getStrategy('S2_STRUCTURAL_MAPPING'); break;
-                    case 'THIRD_PARTY_AUDITOR': strategy = getStrategy('S2_THIRD_PARTY_AUDITOR'); break;
-                    case 'EVIDENCE_SUPPORT': strategy = getStrategy('S2_EVIDENCE_SUPPORT'); break;
-                    case 'TONE_REFINEMENT': strategy = getStrategy('S1_TONE_REFINEMENT'); break;
+            if (payload && payload.trigger_reason) {
+                switch (payload.trigger_reason) {
+                    case 'GHOST_TEXT': strategyIdToUse = 'S1_GHOST_TEXT'; break;
+                    case 'IDEA_SPARK': strategyIdToUse = 'S1_IDEA_SPARK'; break;
+                    case 'IDEA_SPARK_PREFETCH': strategyIdToUse = 'S1_IDEA_SPARK'; break;
+                    case 'LOGIC_AUDITOR': strategyIdToUse = 'S2_LOGIC_AUDITOR'; break;
+                    case 'STRUCTURAL_MAPPING': strategyIdToUse = 'S2_STRUCTURAL_MAPPING'; break;
+                    case 'THIRD_PARTY_AUDITOR': strategyIdToUse = 'S2_THIRD_PARTY_AUDITOR'; break;
+                    case 'EVIDENCE_SUPPORT': strategyIdToUse = 'S2_EVIDENCE_SUPPORT'; break;
+                    case 'TONE_REFINEMENT': strategyIdToUse = 'S2_TONE_REFINEMENT'; break;
+                    case 'STRUGGLE_DETECTION': strategyIdToUse = 'S2_DIAGNOSIS'; break;
                 }
             }
-        } else {
-            strategy = selectStrategy(phase, cognitiveState);
+
+            if (!strategyIdToUse) {
+                const autoFunc = selectStrategy(get().phase, get().cognitiveState);
+                if (autoFunc) strategyIdToUse = autoFunc.id;
+            }
         }
 
-        if (!strategy) {
-            console.warn('Strategy not found');
-            if (!silent) set({ interventionStatus: 'idle' });
+        if (!strategyIdToUse) {
+            console.warn('No strategy selected for intervention');
             return;
         }
 
-        if (!silent) {
-            set({ interventionStatus: 'requesting' });
-            set({ selectedStrategy: strategy.id });
+        const strategy = getStrategy(strategyIdToUse);
 
-            // Save context for follow-up diagnosis
-            if (strategy.id === 'S2_DIAGNOSIS' && contextData) {
-                set({ struggleContext: contextData });
-            }
+        if (!strategy) {
+            console.warn('Strategy object not found for ID:', strategyIdToUse);
+            set({ interventionStatus: 'idle' });
+            return;
         }
 
-        // Optimization: Check cache for Idea Spark
-        if (strategy.id === 'S1_IDEA_SPARK' && !forceStrategyId) {
-            const { suggestionOptions } = get();
-            if (suggestionOptions && suggestionOptions.length > 0) {
-                console.log('Using cached Idea Spark suggestions');
-                if (!silent) set({ interventionStatus: 'completed' });
-                return;
-            }
+        set({ interventionStatus: 'requesting' });
+
+        // Construct Payload
+        let payload: any = get().pendingPayload || {};
+        if (!get().pendingPayload) {
+            payload = monitorAgent.manual_trigger(`Analysis Request for ${strategy.id}`);
+            payload.writing_context = content;
         }
 
-        const chatHistory = get().chatSessions[strategy.id] || [];
+        // Merge overrides
+        if (overrideContextData) {
+            payload = { ...payload, ...overrideContextData };
+        }
+
+        // Meta Layer Injection
+        const metaContext = {
+            writingGenre: get().writingGenre,
+            writingTopic: get().writingTopic,
+            writingAudience: get().writingAudience,
+            userGoal: get().userGoal
+        };
+        payload = { ...payload, ...metaContext };
 
         try {
-            // 2. Call API
-            const res = await fetch('/api/chat', {
+            const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    strategy_id: strategy.id,
+                    messages: [],
+                    ...payload,
+                    strategy_id: strategy.id, // Ensure consistent naming (API uses strategy_id)
                     system_instruction: strategy.systemInstruction,
-                    writing_context: pendingPayload?.writing_context || get().content, // Fallback to full content
-                    chat_history: chatHistory,
-                    user_prompt: customPrompt || pendingPayload?.user_prompt || null,
                     context_data: {
-                        ...(contextData || {}),
-                        writingGenre: get().writingGenre
+                        fullText: get().content,
+                        focalSegment: payload.writing_context || get().content,
+                        ...metaContext
                     }
                 })
             });
-            const data = await res.json();
 
-            if (data.system_prompt) {
-                console.log('%c--- SYSTEM PROMPT ---', 'color: #00ff00; font-weight: bold;');
-                console.log(data.system_prompt);
-                console.log('%c---------------------', 'color: #00ff00; font-weight: bold;');
-            }
-            console.log('API Response Data:', data);
+            if (!response.ok) throw new Error('Failed to fetch suggestion');
 
-            // 3. Route Response
+            const data = await response.json();
+
+            // Handle System 2 Diagnosis Response
             const isSystem2 = strategy.id.startsWith('S2_');
 
-            if (isSystem2) {
-                if (strategy.id === 'S2_DIAGNOSIS') {
-                    try {
-                        // Direct JSON response from API (no suggestion_content wrapper)
-                        const rawData = data;
-                        console.log('[Diagnosis] Raw API Data:', rawData);
+            if (isSystem2 && strategy.id === 'S2_DIAGNOSIS') {
+                // Special handling for Diagnosis Result Parsing (JSON)
+                try {
+                    const rawData = data;
+                    let diagnosisData: any = {};
 
-                        // Normalize keys to lowercase
-                        const diagnosisData: any = {};
-                        Object.keys(rawData).forEach(key => {
-                            diagnosisData[key.toLowerCase()] = rawData[key];
-                        });
+                    // 1. Flatten top-level keys
+                    Object.keys(rawData).forEach(key => diagnosisData[key.toLowerCase()] = rawData[key]);
 
-                        console.log('[Diagnosis] Normalized Data:', diagnosisData);
-
-                        if (diagnosisData.logic || diagnosisData.structure || diagnosisData.tone) {
-                            // Store diagnosis and wait for user acceptance
-                            console.log('[Diagnosis] Setting store state with:', diagnosisData);
-                            set({
-                                struggleDiagnosis: {
-                                    logic: diagnosisData.logic || '진단 내용 없음',
-                                    structure: diagnosisData.structure || '진단 내용 없음',
-                                    tone: diagnosisData.tone || '진단 내용 없음'
-                                },
-                                interventionStatus: 'completed' // Mark API call as done
-                            });
-                            console.log('[Diagnosis] State updated:', get().struggleDiagnosis);
-                        } else {
-                            // Fallback if keys are missing but JSON is valid
-                            console.warn('[Diagnosis] JSON parsed but keys missing:', diagnosisData);
-                            set({
-                                struggleDiagnosis: {
-                                    logic: JSON.stringify(diagnosisData).slice(0, 100) + '...',
-                                    structure: '형식 불일치',
-                                    tone: '형식 불일치'
-                                },
-                                interventionStatus: 'completed'
-                            });
+                    // 2. Check for nested 'diagnosis', 'result', or 'analysis' object
+                    if (!diagnosisData.logic && !diagnosisData.structure) {
+                        const potentialNested = diagnosisData.diagnosis || diagnosisData.analysis || diagnosisData.result || diagnosisData.output;
+                        if (potentialNested && typeof potentialNested === 'object') {
+                            Object.keys(potentialNested).forEach(key => diagnosisData[key.toLowerCase()] = potentialNested[key]);
                         }
-                    } catch (e) {
-                        console.error('[Diagnosis] Parsing Error:', e);
-                        // Fallback: Show error in the box or just the raw text?
-                        // Let's show the raw text as a "General" diagnosis in the Logic field for now, 
-                        // so the user sees SOMETHING.
+                    }
+
+                    // 3. Check for stringified JSON in 'suggestion_content' or 'content'
+                    if (!diagnosisData.logic && !diagnosisData.structure) {
+                        const stringfields = ['suggestion_content', 'content', 'message'];
+                        for (const field of stringfields) {
+                            if (typeof diagnosisData[field] === 'string' && diagnosisData[field].trim().startsWith('{')) {
+                                try {
+                                    const parsedNested = JSON.parse(diagnosisData[field]);
+                                    Object.keys(parsedNested).forEach(key => diagnosisData[key.toLowerCase()] = parsedNested[key]);
+                                } catch (e) { /* ignore parse error */ }
+                            }
+                        }
+                    }
+
+                    // 4. Map Korean Keys if present
+                    if (diagnosisData.논리) diagnosisData.logic = diagnosisData.논리;
+                    if (diagnosisData.구조) diagnosisData.structure = diagnosisData.구조;
+                    if (diagnosisData.어조) diagnosisData.tone = diagnosisData.어조;
+                    if (diagnosisData.태도) diagnosisData.tone = diagnosisData.태도; // Tone alias
+
+                    if (diagnosisData.logic || diagnosisData.structure || diagnosisData.tone) {
                         set({
                             struggleDiagnosis: {
-                                logic: data.suggestion_content.slice(0, 100) + '...',
-                                structure: '분석 실패',
-                                tone: '분석 실패'
+                                logic: diagnosisData.logic || 'No content',
+                                structure: diagnosisData.structure || 'No content',
+                                tone: diagnosisData.tone || 'No content'
+                            },
+                            interventionStatus: 'completed'
+                        });
+                    } else {
+                        console.warn('Diagnosis Keys Missing:', Object.keys(diagnosisData));
+                        set({
+                            struggleDiagnosis: {
+                                logic: (data.suggestion_content || JSON.stringify(data)).slice(0, 150),
+                                structure: 'Format Mismatch',
+                                tone: 'Format Mismatch'
                             },
                             interventionStatus: 'completed'
                         });
                     }
-                } else if (data.suggestion_content) {
-                    get().addChatMessage({
-                        role: 'assistant',
-                        content: data.suggestion_content,
-                        strategy: strategy.id
-                    }, strategy.id);
-                }
-            } else if (strategy.id === 'S1_GHOST_TEXT' || strategy.id === 'S1_DRAFTING') {
-                // Ghost Text / Drafting -> Show as Ghost Text Overlay
-                const text = data.replacement_text || data.suggestion_content;
-                if (text) {
-                    console.log('[Store] Setting Ghost Text:', text);
-                    set({ ghostText: text });
-                }
-            } else if (strategy.id === 'S1_IDEA_SPARK') {
-                if (data.suggestion_options) {
-                    set({ suggestionOptions: data.suggestion_options });
-                }
-            } else if (cognitiveState === 'Block') {
-                if (data.suggestion_options) {
-                    set({ suggestionOptions: data.suggestion_options });
-                }
-                if (data.suggestion_content) {
-                    get().addChatMessage({
-                        role: 'assistant',
-                        content: data.suggestion_content,
-                        strategy: strategy.id
-                    }, strategy.id);
+                } catch (e) {
+                    console.error('Diagnosis Parse Error', e);
+                    set({ interventionStatus: 'failed' });
                 }
             } else {
-                if (data.replacement_text) {
-                    get().addToHistory(data.replacement_text);
-                } else if (data.suggestion_content) {
-                    get().addToHistory(data.suggestion_content);
+                const content = data.suggestion_content || data.message || data.content || "Analysis complete.";
+
+                get().addChatMessage({
+                    role: 'assistant',
+                    content: content,
+                    strategy: strategy.id
+                }, strategy.id);
+
+                // S1 Ghost Text / Markup Strategies Robust Handling
+                if (['S1_GHOST_TEXT', 'S1_REFINEMENT', 'S1_GAP_FILLING', 'S1_IDEA_EXPANSION', 'S1_PATTERN_BREAKER', 'S1_DRAFTING'].includes(strategy.id)) {
+                    let replacement = data.replacement_text;
+                    if (!replacement && typeof content === 'string') {
+                        // Fallback: Use content but strip quotes or markdown if needed
+                        replacement = content.replace(/^["']|["']$/g, '').trim();
+                    }
+                    if (replacement) {
+                        set({ ghostText: replacement });
+                    }
                 }
+
+                if (strategy.id === 'S1_IDEA_SPARK') {
+                    if (data.suggestion_options) {
+                        set({ suggestionOptions: data.suggestion_options });
+                    } else if (Array.isArray(data.content)) {
+                        set({ suggestionOptions: data.content });
+                    }
+                }
+
+                set({ pendingPayload: null, interventionStatus: 'idle' });
             }
 
-            if (!silent) set({ interventionStatus: 'completed' });
-
         } catch (error) {
-            console.error('Intervention failed:', error);
-            if (!silent) set({ interventionStatus: 'idle' });
+            console.error(error);
+            set({ interventionStatus: 'failed' });
         }
-    }
+    },
 }), {
     name: 'adaptive-writer-storage',
     partialize: (state) => ({
         // chatSessions: state.chatSessions, // Removed to reset on refresh
         isSystemInitiatedEnabled: state.isSystemInitiatedEnabled,
+        // isGoalSet: state.isGoalSet, // Removed to show modal on refresh
+        writingTopic: state.writingTopic,
+        writingAudience: state.writingAudience,
+        userGoal: state.userGoal,
+        writingGenre: state.writingGenre,
+        activeWritingPrompt: state.activeWritingPrompt,
     }),
 }));
 

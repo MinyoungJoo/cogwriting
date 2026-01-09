@@ -23,8 +23,69 @@ function onError(error: Error) {
     console.error(error);
 }
 
-import { X, Pin } from 'lucide-react';
+import { X, Pin, Target, PenLine, Check } from 'lucide-react';
 import useStore from '@/store/useStore';
+import { useState } from 'react';
+
+const GoalHeader = () => {
+    const userGoal = useStore(state => state.userGoal);
+    const setUserGoal = useStore(state => state.setUserGoal);
+    const isGoalSet = useStore(state => state.isGoalSet);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editValue, setEditValue] = useState('');
+
+    if (!isGoalSet) return null;
+
+    const handleEdit = () => {
+        setEditValue(userGoal || '');
+        setIsEditing(true);
+    };
+
+    const handleSave = () => {
+        if (editValue.trim()) {
+            setUserGoal(editValue);
+        }
+        setIsEditing(false);
+    };
+
+    return (
+        <div className="w-full bg-gray-50/80 backdrop-blur border-b border-gray-200 px-4 py-2 flex items-start gap-3 shrink-0 animate-in fade-in slide-in-from-top-1 z-10">
+            <Target size={14} className="text-gray-500 shrink-0 mt-1" />
+            <div className="flex-1 min-w-0">
+                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">Current Goal</div>
+                {isEditing ? (
+                    <div className="flex gap-2 items-center">
+                        <input
+                            autoFocus
+                            className="flex-1 bg-white border border-gray-300 rounded px-2 py-1 text-sm text-gray-800 focus:outline-none focus:border-blue-500"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSave();
+                                if (e.key === 'Escape') setIsEditing(false);
+                            }}
+                        />
+                        <button onClick={handleSave} className="text-green-600 hover:text-green-700 p-1"><Check size={14} /></button>
+                        <button onClick={() => setIsEditing(false)} className="text-gray-400 hover:text-gray-600 p-1"><X size={14} /></button>
+                    </div>
+                ) : (
+                    <div className="group flex items-center gap-2">
+                        <div className="text-sm text-gray-800 leading-snug truncate" title={userGoal || ''}>
+                            {userGoal || 'No goal set'}
+                        </div>
+                        <button
+                            onClick={handleEdit}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-blue-500"
+                            title="Edit Goal"
+                        >
+                            <PenLine size={12} />
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
 
 const WritingPromptOverlay = () => {
     const activeWritingPrompt = useStore(state => state.activeWritingPrompt);
@@ -64,6 +125,7 @@ export default function Editor() {
             <div className="relative h-full flex flex-col bg-white rounded-lg shadow-sm border border-gray-200">
                 <IdeaSparkPlugin />
                 <StruggleNudge />
+                <GoalHeader />
                 <WritingPromptOverlay />
                 <div className="relative flex-1 min-h-0 flex flex-col">
                     <RichTextPlugin

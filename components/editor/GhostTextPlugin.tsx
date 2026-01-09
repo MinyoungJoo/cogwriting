@@ -205,7 +205,7 @@ export default function GhostTextPlugin() {
 
                         setPendingPayload(payload);
                         // Do NOT change selectedStrategy, just trigger with current one
-                        triggerIntervention(currentStrategyId, false, `Alternative for: ${ghostText}`);
+                        triggerIntervention({ user_prompt: `Alternative for: ${ghostText}` }, currentStrategyId);
                         return true;
                     }
 

@@ -10,10 +10,26 @@ export function KeystrokeMonitorPlugin() {
     const [editor] = useLexicalComposerContext();
     const addKeystroke = useStore((state) => state.addKeystroke);
 
+
+    // Idle Polling (checking every 1 second)
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (useStore.getState().isGoalSet) {
+                useStore.getState().updateMetrics();
+            }
+        }, 1000);
+        return () => clearInterval(interval);
+    }, []);
+
     useEffect(() => {
         const removeKeyDown = editor.registerCommand(
             KEY_DOWN_COMMAND,
             (event: KeyboardEvent) => {
+                // Ignore if goal is not set
+                if (!useStore.getState().isGoalSet) {
+                    return false;
+                }
+
                 // Ignore IME composition events in keydown to avoid "Process" spam
                 // keyCode 229 is a standard indicator for IME composition
                 if (event.isComposing || event.key === 'Process' || event.keyCode === 229) {
@@ -35,6 +51,8 @@ export function KeystrokeMonitorPlugin() {
 
         // Handle IME Composition End (for Korean/CJK)
         const onCompositionEnd = (event: CompositionEvent) => {
+            if (!useStore.getState().isGoalSet) return;
+
             const now = Date.now() / 1000;
             // Log the composed text (e.g., "한")
             addKeystroke({
@@ -61,6 +79,7 @@ export function KeystrokeMonitorPlugin() {
         };
     }, [editor, addKeystroke]);
 
+
     return null;
 }
 
@@ -81,7 +100,10 @@ export function TextChangePlugin() {
                 const selection = window.getSelection();
                 const cursorIndex = selection?.anchorOffset || 0; // Simplified cursor
 
-                monitorAgent.update_content(textContent, cursorIndex);
+                // Check Goal Set before updating monitor
+                if (useStore.getState().isGoalSet) {
+                    monitorAgent.update_content(textContent, cursorIndex);
+                }
             });
         });
     }, [editor, setContent]);

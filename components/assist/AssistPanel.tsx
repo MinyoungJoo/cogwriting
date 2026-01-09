@@ -1,5 +1,5 @@
 import useStore from '@/store/useStore';
-import { Sparkles, Send, MessageSquare, Search, LayoutList, UserCheck, BookOpen, Palette, Play } from 'lucide-react';
+import { Sparkles, Send, MessageSquare, Search, LayoutList, UserCheck, BookOpen, Palette, Play, FileText, Wrench } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { selectStrategy } from '@/src/lib/strategy';
 import { monitorAgent } from '@/src/lib/MonitorAgent';
@@ -17,7 +17,8 @@ export default function AssistPanel() {
         phase,
         cognitiveState,
         setSelectedStrategy,
-        setPendingPayload
+        setPendingPayload,
+        setStruggleDetected // Import setStruggleDetected
     } = useStore();
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -56,7 +57,15 @@ export default function AssistPanel() {
                 writing_context: content,
                 trigger_reason: 'USER_PROMPT',
                 user_prompt: input,
-                chat_history: currentMessages
+                chat_history: currentMessages,
+                context_data: {
+                    fullText: content,
+                    focalSegment: content, // For general chat, treat whole text as focal
+                    userGoal: useStore.getState().userGoal,
+                    writingGenre: useStore.getState().writingGenre,
+                    writingTopic: useStore.getState().writingTopic,
+                    writingAudience: useStore.getState().writingAudience
+                }
             };
 
             const response = await fetch('/api/chat', {
@@ -73,13 +82,16 @@ export default function AssistPanel() {
                 throw new Error(data.error);
             }
 
-            if (data.suggestion_content) {
+            const responseContent = data.suggestion_content || data.message || data.content;
+
+            if (responseContent) {
                 addChatMessage({
                     role: 'assistant',
-                    content: data.suggestion_content,
+                    content: typeof responseContent === 'string' ? responseContent : JSON.stringify(responseContent),
                     strategy: strategyId
                 }, currentSessionId);
             } else {
+                // Only show WAIT if truly no content found
                 addChatMessage({
                     role: 'assistant',
                     content: "I'm thinking... (Decision: WAIT)"
@@ -97,16 +109,26 @@ export default function AssistPanel() {
     };
 
     // Only select the strategy, do not trigger
-    const handleToolSelect = (strategyId: any) => {
-        console.log(`Tool Selected: ${strategyId}`);
-        setSelectedStrategy(strategyId);
-    };
+    const unreadDiagnosis = useStore((state) => state.unreadDiagnosis);
+    const markDiagnosisRead = useStore((state) => state.markDiagnosisRead);
+
+    useEffect(() => {
+        if (selectedStrategy && unreadDiagnosis[selectedStrategy]) {
+            // Wait for visual effect then mark read
+            const timer = setTimeout(() => {
+                markDiagnosisRead(selectedStrategy);
+            }, 2000);
+            return () => clearTimeout(timer);
+        }
+    }, [selectedStrategy, unreadDiagnosis, markDiagnosisRead]);
 
     // Manual Trigger for Analysis
-    const handleRunAnalysis = () => {
-        if (!selectedStrategy) return;
-        console.log(`Running Analysis for: ${selectedStrategy}`);
-        const payload = monitorAgent.manual_trigger(`Review Request: ${selectedStrategy}`);
+    const handleRunAnalysis = (overrideStrategyId?: string) => {
+        const targetStrategy = overrideStrategyId || selectedStrategy;
+        if (!targetStrategy) return;
+
+        console.log(`Running Analysis for: ${targetStrategy}`);
+        const payload = monitorAgent.manual_trigger(`Review Request: ${targetStrategy}`);
 
         // FORCE FULL CONTEXT for Chat Analysis
         // User requested that chat interactions should have access to the full text
@@ -117,11 +139,12 @@ export default function AssistPanel() {
     };
 
     const tools = [
+        { id: 'S2_DIAGNOSIS', label: 'Diagnosis', icon: FileText, desc: '진단', color: 'yellow' },
         { id: 'S2_LOGIC_AUDITOR', label: 'Logic', icon: Search, desc: '논리 점검' },
         { id: 'S2_STRUCTURAL_MAPPING', label: 'Structure', icon: LayoutList, desc: '구조 시각화' },
-        { id: 'S2_THIRD_PARTY_AUDITOR', label: 'Auditor', icon: UserCheck, desc: '제3자 피드백' },
-        { id: 'S2_EVIDENCE_SUPPORT', label: 'Evidence', icon: BookOpen, desc: '근거 자료' },
         { id: 'S2_TONE_REFINEMENT', label: 'Tone', icon: Palette, desc: '어조 정제' },
+        { id: 'S2_EVIDENCE_SUPPORT', label: 'Evidence', icon: BookOpen, desc: '근거 자료' },
+        { id: 'S2_THIRD_PARTY_AUDITOR', label: 'Auditor', icon: UserCheck, desc: '제3자 피드백' },
     ];
 
     const EDITOR_STRATEGIES = [
@@ -132,6 +155,20 @@ export default function AssistPanel() {
         'S1_PATTERN_BREAKER'
     ];
 
+    // Only select the strategy, do not trigger
+    const handleToolSelect = (strategyId: any) => {
+        console.log(`Tool Selected: ${strategyId}`);
+        setSelectedStrategy(strategyId);
+
+        // Link Diagnosis Button to Struggle Nudge as requested
+        if (strategyId === 'S2_DIAGNOSIS') {
+            setStruggleDetected(true);
+        }
+
+        // Auto-run logic removed as per user request.
+        // Users must click 'Run Analysis' unless triggered by Diagnose Nudge.
+    };
+
     const isEditorStrategy = selectedStrategy && EDITOR_STRATEGIES.includes(selectedStrategy);
 
     return (
@@ -139,7 +176,7 @@ export default function AssistPanel() {
             {/* Sidebar */}
             <div className="w-14 flex flex-col items-center py-4 border-r border-gray-800 gap-4 bg-gray-950">
                 <div className="mb-2">
-                    <Sparkles className="w-6 h-6 text-yellow-400" />
+                    <Wrench className="w-6 h-6 text-white" />
                 </div>
 
                 {/* S2 Tools */}
@@ -147,7 +184,12 @@ export default function AssistPanel() {
                     <button
                         key={tool.id}
                         onClick={() => handleToolSelect(tool.id)}
-                        className={`p-2 rounded-lg transition-colors group relative ${selectedStrategy === tool.id ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+                        className={`p-2 rounded-lg transition-colors group relative ${selectedStrategy === tool.id
+                            ? 'bg-blue-600 text-white'
+                            : tool.color === 'yellow'
+                                ? 'text-yellow-400 hover:text-yellow-100 hover:bg-yellow-900/40'
+                                : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                            }`}
                         title={tool.desc}
                     >
                         <tool.icon className="w-5 h-5" />
@@ -171,11 +213,11 @@ export default function AssistPanel() {
                     )}
                 </div>
 
-                {/* Analysis Trigger Button (Only when S2 strategy selected) */}
-                {selectedStrategy && selectedStrategy.startsWith('S2_') && (
+                {/* Analysis Trigger Button (Only when S2 strategy selected AND NOT Diagnosis) */}
+                {selectedStrategy && selectedStrategy.startsWith('S2_') && selectedStrategy !== 'S2_DIAGNOSIS' && (
                     <div className="p-3 bg-gray-800/50 border-b border-gray-800">
                         <button
-                            onClick={handleRunAnalysis}
+                            onClick={() => handleRunAnalysis()}
                             disabled={interventionStatus === 'requesting'}
                             className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md flex items-center justify-center gap-2 transition-colors text-sm font-medium"
                         >
@@ -187,15 +229,30 @@ export default function AssistPanel() {
 
 
 
-                {/* Chat Area - Only show if S2 strategy is selected AND it's not Diagnosis */}
-                {selectedStrategy && selectedStrategy.startsWith('S2_') && selectedStrategy !== 'S2_DIAGNOSIS' ? (
+                {/* Chat Area - Only show if S2 strategy is selected */}
+                {selectedStrategy && selectedStrategy.startsWith('S2_') ? (
                     <>
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        <div className={`flex-1 overflow-y-auto p-4 space-y-4 relative ${useStore.getState().unreadDiagnosis[selectedStrategy] ? 'animate-pulse bg-yellow-900/10' : ''
+                            }`}
+                            onAnimationEnd={() => useStore.getState().markDiagnosisRead(selectedStrategy)}
+                        >
+                            {/* Sparkle Overlay for Unread */}
+                            {useStore.getState().unreadDiagnosis[selectedStrategy] && (
+                                <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-50">
+                                    <Sparkles className="w-16 h-16 text-yellow-400 animate-ping opacity-75" />
+                                </div>
+                            )}
+
                             {currentMessages.map((msg, idx) => (
                                 <div key={idx} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                                     {msg.role === 'assistant' && msg.strategy && (
                                         <div className="text-[10px] text-gray-500 mb-1 ml-1 uppercase tracking-wider flex items-center gap-1">
-                                            <Sparkles className="w-3 h-3" />
+                                            {msg.strategy === 'S2_DIAGNOSIS' ? (
+                                                <FileText className="w-3 h-3 text-yellow-500" />
+                                            ) : (
+                                                <Sparkles className="w-3 h-3" />
+                                            )}
+
                                             {msg.strategy.replace('S1_', '').replace('S2_', '').replace(/_/g, ' ')}
                                         </div>
                                     )}
@@ -255,7 +312,7 @@ export default function AssistPanel() {
                     </>
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-gray-500 p-8 text-center">
-                        <Sparkles className="w-12 h-12 mb-4 text-gray-700" />
+                        <Wrench className="w-12 h-12 mb-4 text-gray-700" />
                         <h3 className="text-lg font-medium text-gray-400 mb-2">Assist Agent</h3>
                         <p className="text-sm">
                             좌측 메뉴에서 도구를 선택하거나<br />
@@ -264,6 +321,6 @@ export default function AssistPanel() {
                     </div>
                 )}
             </div>
-        </div>
+        </div >
     );
 }

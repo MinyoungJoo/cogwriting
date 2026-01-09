@@ -8,12 +8,14 @@ import { useMonitor } from '@/src/hooks/useMonitor';
 import { Suspense, useEffect } from 'react';
 import useStore from '@/store/useStore';
 
+import GoalSettingModal from '@/components/GoalSettingModal';
+
 function EditorContent() {
     const searchParams = useSearchParams();
     const modeParam = searchParams.get('mode');
 
     const showMonitor = modeParam === 'monitor';
-    const { setSystemMode } = useStore();
+    const { setSystemMode, isGoalSet } = useStore();
 
     // Set System Mode based on URL param
     useEffect(() => {
@@ -32,7 +34,8 @@ function EditorContent() {
     const showAssistPanel = modeParam !== 's1';
 
     return (
-        <main className="flex h-screen w-full bg-white overflow-hidden">
+        <main className="flex h-screen w-full bg-white overflow-hidden relative">
+            {!isGoalSet && <GoalSettingModal />}
             {showMonitor && <MonitorPanel />}
             <div className="flex-1 p-6 bg-gray-100">
                 <Editor />

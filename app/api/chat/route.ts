@@ -57,27 +57,34 @@ export async function POST(req: Request) {
         }
 
         // Determine Genre Context
-        const writingGenre = context_data?.writingGenre;
-        let genreInstruction = "";
-        if (writingGenre === 'creative') {
-            genreInstruction = "Writing Genre: Creative. Focus on narrative flow, vivid imagery, emotional resonance, and storytelling elements.";
-        } else if (writingGenre === 'argumentative') {
-            genreInstruction = "Writing Genre: Argumentative. Focus on logical structure, clarity, persuasive arguments, and strong evidence.";
-        }
+        const writingGenre = context_data?.writingGenre || 'General';
+        const writingTopic = context_data?.writingTopic || 'Not set';
+        const writingAudience = context_data?.writingAudience || 'General';
+        const userGoal = context_data?.userGoal || 'Not set';
 
         const systemPrompt = `
 # { ROLE }
 You are an AI Writing Assistant.
 Your task is to execute the specific strategy requested by the system.
 You must always respond in Korean unless explicitly asked otherwise.
-${genreInstruction}
+
+# { Meta Layer }
+- Writing Context: ${writingGenre}
+- Assigned Topic: ${writingTopic}
+- Audience: ${writingAudience}
+- User's Specific Goal: >>> ${userGoal} <<<
+
+# { INSTRUCTION }
+너는 위 '# { Meta layer}' 에 포함된 context, topic, audience 바탕으로 글쓰기를 돕는 파트너이다. 
+항상 아래 '# { INPUTS }' 섹션에 제공된 사용자의 현재 쓴 글'Writing Context'을 바탕으로 답변해라.
+응답을 생성할떄, User's Specific Goal에 맞추어서 응답을 생성해라.
+
+# { STRATEGY_INSTRUCTION }
+${system_instruction}
 
 # { INPUTS }
 - Strategy ID: ${strategy_id}
-- Writing Context: ${finalWritingContext}
-
-# { INSTRUCTION }
-${system_instruction}
+- Writing Context: ${context_data.fullText}
 
 # { OUTPUT_FORMAT }
 Respond strictly in JSON format.

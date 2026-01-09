@@ -9,7 +9,8 @@ export function useMonitor() {
         setPhase,
         setCognitiveState,
         addChatMessage,
-        setActionHistory
+        setActionHistory,
+        isGoalSet // Add isGoalSet
     } = useStore();
 
     const lastKeystrokeCountRef = useRef(0);
@@ -20,6 +21,10 @@ export function useMonitor() {
     // Periodic check
     useEffect(() => {
         const interval = setInterval(() => {
+            // Check if goal is set. If not, don't run monitor checks.
+            const { isGoalSet } = useStore.getState();
+            if (!isGoalSet) return;
+
             // Sync state to store
             useStore.getState().setPhase(monitorAgent.getPhase());
             const { setCpm, setPhase, setCognitiveState, setActionHistory, setMetrics, setInterventionStatus, setPendingPayload } = useStore.getState();
@@ -66,10 +71,10 @@ export function useMonitor() {
 
                     useStore.getState().setPendingPayload(payload);
 
-                    if (payload.trigger_reason === 'STRUGGLE_DETECTION' || payload.trigger_reason === 'IDEA_SPARK') {
-                        // For Struggle Detection and Idea Spark Nudge, we just want to update the UI state immediately
-                        // triggerIntervention in useStore handles setting isStruggleDetected/isIdeaSparkDetected = true
-                        useStore.getState().triggerIntervention();
+                    if (payload.trigger_reason === 'STRUGGLE_DETECTION') {
+                        useStore.getState().setStruggleDetected(true);
+                    } else if (payload.trigger_reason === 'IDEA_SPARK') {
+                        useStore.getState().setIdeaSparkDetected(true);
                     } else {
                         // For others, we set status to 'detected' and let the UI/Plugins handle the handoff
                         useStore.getState().setInterventionStatus('detected');

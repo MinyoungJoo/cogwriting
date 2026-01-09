@@ -2,7 +2,7 @@ import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import useStore from '@/store/useStore';
-import { $getSelection, $isRangeSelection, $getNodeByKey } from 'lexical';
+import { $getSelection, $isRangeSelection, $getNodeByKey, $isTextNode } from 'lexical';
 import { Lightbulb, X } from 'lucide-react';
 import { monitorAgent } from '@/src/lib/MonitorAgent';
 
@@ -18,7 +18,13 @@ export default function IdeaSparkPlugin() {
     const isIdeaSparkDetected = useStore(state => state.isIdeaSparkDetected);
     const setIdeaSparkDetected = useStore(state => state.setIdeaSparkDetected);
     const setActiveWritingPrompt = useStore(state => state.setActiveWritingPrompt);
+    const activeWritingPrompt = useStore(state => state.activeWritingPrompt);
     const selectedStrategy = useStore(state => state.selectedStrategy);
+    const ghostTextPosition = useStore(state => state.ghostTextPosition);
+    const ghostTextReplacementLength = useStore(state => state.ghostTextReplacementLength);
+    const setGhostTextPosition = useStore(state => state.setGhostTextPosition);
+    const setGhostTextReplacementLength = useStore(state => state.setGhostTextReplacementLength);
+    const isStruggleDetected = useStore(state => state.isStruggleDetected); // Mutual exclusion check
 
     const [coords, setCoords] = useState<{ x: number; y: number } | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -44,8 +50,13 @@ export default function IdeaSparkPlugin() {
                     if (rect && (rect.top !== 0 || rect.left !== 0)) {
                         // Use fixed positioning (viewport relative)
                         // Place it below the cursor
+                        // Clamp X to prevent overflow (UI width ~260px)
+                        const UI_WIDTH = 280;
+                        const viewportWidth = window.innerWidth;
+                        const left = Math.max(10, Math.min(rect.left, viewportWidth - UI_WIDTH));
+
                         setCoords({
-                            x: rect.left,
+                            x: left,
                             y: rect.bottom + 10
                         });
                     }
@@ -58,8 +69,19 @@ export default function IdeaSparkPlugin() {
     const isRequesting = interventionStatus === 'requesting' && selectedStrategy === 'S1_IDEA_SPARK';
     const hasResult = !!suggestionOptions;
     const showResultUI = isRequesting || hasResult;
-    const showNudgeUI = isIdeaSparkDetected && !showResultUI;
-    const isVisible = showNudgeUI || showResultUI;
+    // const showNudgeUI = isIdeaSparkDetected && !showResultUI;
+    // Force show result UI if triggered manually via markup to skip nudge
+    const showNudgeUI = isIdeaSparkDetected && !showResultUI && !ghostTextPosition;
+
+    // If we have a manual trigger (ghostTextPosition set), we might want to skip the nudge and go straight to "Requesting" 
+    // BUT, the current logic is:
+    // 1. Manual Trigger sets selectedStrategy='S1_IDEA_SPARK' & pendingPayload
+    // 2. It calls triggerIntervention() which sets status='requesting'
+    // 3. So showResultUI becomes true (isRequesting=true)
+    // 4. So showNudgeUI becomes false.
+    // This seems correct for skipping the nudge.
+
+    const isVisible = (showNudgeUI || showResultUI) && !isStruggleDetected;
 
     // Update position when UI is active and on editor updates
     useEffect(() => {
@@ -90,10 +112,26 @@ export default function IdeaSparkPlugin() {
 
     const handleNudgeClick = () => {
         setIdeaSparkDetected(false); // Hide Nudge
-        triggerIntervention('S1_IDEA_SPARK'); // Start API call -> sets interventionStatus to 'requesting'
+        triggerIntervention(undefined, 'S1_IDEA_SPARK'); // Start API call -> sets interventionStatus to 'requesting'
     };
 
     const handleClose = () => {
+        // Cleanup trigger text if it exists (e.g., /? or empty markup)
+        if (ghostTextPosition && ghostTextReplacementLength > 0) {
+            editor.update(() => {
+                const node = $getNodeByKey(ghostTextPosition.key);
+                if (node && $isTextNode(node)) {
+                    // Safety check: ensure offset is within bounds
+                    if (ghostTextPosition.offset <= node.getTextContent().length) {
+                        node.spliceText(ghostTextPosition.offset, ghostTextReplacementLength, '');
+                    }
+                }
+            });
+            // Reset Store
+            setGhostTextPosition(null);
+            setGhostTextReplacementLength(0);
+        }
+
         setIdeaSparkDetected(false);
         setSuggestionOptions(null);
         setInterventionStatus('idle');
@@ -107,7 +145,7 @@ export default function IdeaSparkPlugin() {
         handleClose();
     };
 
-    if (!showNudgeUI && !showResultUI) return null;
+    if (!isVisible) return null;
 
     return createPortal(
         <div
@@ -179,7 +217,7 @@ export default function IdeaSparkPlugin() {
                                     onClick={() => {
                                         setActiveWritingPrompt(q);
                                         // Extend cooldown for Idea Spark since user accepted help
-                                        monitorAgent.extendCooldown('IDEA_SPARK', 30);
+                                        // monitorAgent.extendCooldown('IDEA_SPARK', 30); (Removed as redundant)
                                         handleClose(); // This will also setIdeaSparkDetected(false)
                                     }}
                                     className="w-full text-left p-2 text-xs text-gray-300 hover:bg-purple-900/30 rounded transition-colors flex items-start gap-2"
