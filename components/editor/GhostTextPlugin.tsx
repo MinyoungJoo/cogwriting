@@ -199,7 +199,7 @@ export default function GhostTextPlugin() {
 
                         // Trigger current strategy again with alternative prompt
                         const { triggerIntervention, setPendingPayload } = useStore.getState();
-                        const currentStrategyId = selectedStrategy || 'S1_GHOST_TEXT';
+                        const currentStrategyId = selectedStrategy || 'S1_PATTERN_BREAKER';
 
                         const payload = monitorAgent.manual_trigger(`Alternative for: ${ghostText}`);
 

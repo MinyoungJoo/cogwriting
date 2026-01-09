@@ -31,7 +31,7 @@ export default function SystemFeedbackPlugin() {
                 // Map Trigger to Strategy ID
                 let strategyId = undefined;
                 switch (pendingPayload.trigger_reason) {
-                    case 'GHOST_TEXT': strategyId = 'S1_GHOST_TEXT'; break;
+
                     case 'IDEA_SPARK': strategyId = 'S1_IDEA_SPARK'; break;
                     case 'LOGIC_AUDITOR': strategyId = 'S2_LOGIC_AUDITOR'; break;
                     case 'STRUCTURAL_MAPPING': strategyId = 'S2_STRUCTURAL_MAPPING'; break;

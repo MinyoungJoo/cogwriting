@@ -148,7 +148,6 @@ export default function AssistPanel() {
     ];
 
     const EDITOR_STRATEGIES = [
-        'S1_GHOST_TEXT',
         'S1_GAP_FILLING',
         'S1_REFINEMENT',
         'S1_IDEA_EXPANSION',

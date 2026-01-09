@@ -215,11 +215,11 @@ export class MonitorAgent {
                 // console.log(`[Monitor] Revision Ratio: ${revisionRatio.toFixed(2)} (Threshold: 0.6)`);
 
                 // Condition: Efficiency < 60%
+                // Condition: Efficiency < 60%
                 if (revisionRatio < 0.6) {
-                    console.log(`[Monitor] Struggle Detected! Ratio: ${revisionRatio.toFixed(2)}`);
                     if (checkCooldown('STRUGGLE_DETECTION', 60)) {
+                        console.log(`[Monitor] Struggle Detected! Ratio: ${revisionRatio.toFixed(2)}`);
                         // Prevent Idea Spark from triggering immediately after
-                        // this.trigger_cooldowns['IDEA_SPARK'] = Date.now() / 1000; (Removed: UI handles mutual exclusion)
                         return this.create_payload('STRUGGLE_DETECTION');
                     }
                 }

@@ -3,7 +3,6 @@ export type CognitiveState = 'Flow' | 'Block';
 
 // 사용자가 정의한 전략 ID
 export type StrategyID =
-    | 'S1_GHOST_TEXT'
     | 'S1_IDEA_SPARK'
     | 'S1_GAP_FILLING'
     | 'S1_REFINEMENT'
@@ -35,16 +34,6 @@ export function selectStrategy(phase: Phase, state: CognitiveState): Strategy | 
 
 export function getStrategy(id: StrategyID): Strategy {
     switch (id) {
-        case 'S1_GHOST_TEXT':
-            return {
-                id: 'S1_GHOST_TEXT',
-                uiMessage: '🌊 문장 자동 완성 중...',
-                systemInstruction: `
-        [Goal]: Maintain flow and reduce typing effort.
-        [Action]: Complete the user's current sentence naturally. Keep it under 10 words. Output text only.
-        [Language]: Respond in Korean.
-      `.trim(),
-            };
         case 'S2_DIAGNOSIS':
             return {
                 id: 'S2_DIAGNOSIS',
@@ -117,7 +106,7 @@ export function getStrategy(id: StrategyID): Strategy {
           [Genre-Specific Guidance]:
           - IF Creative: Focus on narrative flow, sensory transitions, or emotional continuity.
           - IF Argumentative: Focus on logical connectors (e.g., "furthermore", "conversely") and ensuring the evidence supports the claim.
-          [Output]: Output ONLY the suggested text.
+          [Output]: Output ONLY the suggested text. Do NOT include parentheses around the text.
           [Language]: Respond in Korean.
         `.trim()
             };

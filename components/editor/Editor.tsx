@@ -120,11 +120,13 @@ export default function Editor() {
         ]
     };
 
+    const systemMode = useStore(state => state.systemMode);
+
     return (
         <LexicalComposer initialConfig={initialConfig}>
             <div className="relative h-full flex flex-col bg-white rounded-lg shadow-sm border border-gray-200">
-                <IdeaSparkPlugin />
-                <StruggleNudge />
+                {systemMode !== 's2' && <IdeaSparkPlugin />}
+                {systemMode !== 's1' && <StruggleNudge />}
                 <GoalHeader />
                 <WritingPromptOverlay />
                 <div className="relative flex-1 min-h-0 flex flex-col">
@@ -140,7 +142,7 @@ export default function Editor() {
                 <AutoFocusPlugin />
                 <KeystrokeMonitorPlugin />
                 <TextChangePlugin />
-                <GhostTextPlugin />
+                {systemMode !== 's2' && <GhostTextPlugin />}
                 <MarkupTriggerPlugin />
                 <SelectionMenuPlugin />
                 <SystemFeedbackPlugin />

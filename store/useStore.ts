@@ -415,7 +415,7 @@ const useStore = create<AppState>()(persist((set, get) => ({
 
             if (payload && payload.trigger_reason) {
                 switch (payload.trigger_reason) {
-                    case 'GHOST_TEXT': strategyIdToUse = 'S1_GHOST_TEXT'; break;
+
                     case 'IDEA_SPARK': strategyIdToUse = 'S1_IDEA_SPARK'; break;
                     case 'IDEA_SPARK_PREFETCH': strategyIdToUse = 'S1_IDEA_SPARK'; break;
                     case 'LOGIC_AUDITOR': strategyIdToUse = 'S2_LOGIC_AUDITOR'; break;
@@ -563,11 +563,11 @@ const useStore = create<AppState>()(persist((set, get) => ({
                 }, strategy.id);
 
                 // S1 Ghost Text / Markup Strategies Robust Handling
-                if (['S1_GHOST_TEXT', 'S1_REFINEMENT', 'S1_GAP_FILLING', 'S1_IDEA_EXPANSION', 'S1_PATTERN_BREAKER', 'S1_DRAFTING'].includes(strategy.id)) {
+                if (['S1_REFINEMENT', 'S1_GAP_FILLING', 'S1_IDEA_EXPANSION', 'S1_PATTERN_BREAKER', 'S1_DRAFTING'].includes(strategy.id)) {
                     let replacement = data.replacement_text;
                     if (!replacement && typeof content === 'string') {
-                        // Fallback: Use content but strip quotes or markdown if needed
-                        replacement = content.replace(/^["']|["']$/g, '').trim();
+                        // Fallback: Use content but strip quotes or markdown or parentheses if needed
+                        replacement = content.replace(/^["'(\[]|["')\]]$/g, '').trim();
                     }
                     if (replacement) {
                         set({ ghostText: replacement });

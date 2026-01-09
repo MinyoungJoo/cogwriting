@@ -12,8 +12,12 @@ export default function MarkupTriggerPlugin() {
     useEffect(() => {
         return editor.registerUpdateListener(({ editorState }) => {
             editorState.read(() => {
-                // Skip if ghost text is already active to prevent conflicts/crashes
-                if (useStore.getState().ghostText) return;
+                // S2 Mode Check: Block S1 triggers
+                const { ghostText, systemMode } = useStore.getState();
+                if (systemMode === 's2') return;
+
+                // Skip if ghost text is already active
+                if (ghostText) return;
 
                 const selection = $getSelection();
                 if (!$isRangeSelection(selection) || !selection.isCollapsed()) return;
