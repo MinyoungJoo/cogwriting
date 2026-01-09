@@ -443,7 +443,7 @@ const useStore = create<AppState>()(persist((set, get) => ({
         let payload: any = get().pendingPayload || {};
         if (!get().pendingPayload) {
             payload = monitorAgent.manual_trigger(`Analysis Request for ${strategy.id}`);
-            payload.writing_context = content;
+            payload.writing_context = get().content;
         }
 
         // Merge overrides
