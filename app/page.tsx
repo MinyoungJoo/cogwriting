@@ -3,14 +3,14 @@
 import Link from 'next/link';
 import { ArrowRight, Layout, Monitor, PenTool, BookOpen, Database, BarChart, Link as LinkIcon, User } from 'lucide-react';
 import useStore from '@/store/useStore';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react'; // [FIX] Added import
 import { useSearchParams } from 'next/navigation';
 import SessionList from '@/components/dashboard/SessionList';
 import LogViewer from '@/components/dashboard/LogViewer';
 import PilotLinkGenerator from '@/components/dashboard/PilotLinkGenerator';
 import { TOPICS } from '@/src/lib/topics';
 
-export default function LandingPage() {
+function HomeContent() {
   const { writingGenre, setWritingGenre, participantId, setParticipantId } = useStore();
   const searchParams = useSearchParams();
 
@@ -299,5 +299,14 @@ export default function LandingPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// [FIX] Wrap 'useSearchParams' usage in Suspense
+export default function LandingPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">Loading...</div>}>
+      <HomeContent />
+    </Suspense>
   );
 }
