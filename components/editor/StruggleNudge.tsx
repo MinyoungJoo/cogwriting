@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import useStore from '@/store/useStore';
 import { Search, X, LayoutList, Palette, Check } from 'lucide-react';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { $getSelection, $isRangeSelection, $isTextNode } from 'lexical';
+import { $getSelection, $isRangeSelection, $isTextNode, $getRoot } from 'lexical';
 
 export const StruggleNudge = () => {
     if (typeof window === 'undefined') return null;
@@ -60,8 +60,9 @@ export const StruggleNudge = () => {
 
     // Determine UI visibility
     const isDiagnosing = interventionStatus === 'requesting' && selectedStrategy === 'S2_DIAGNOSIS';
+    const isFailed = interventionStatus === 'failed' && selectedStrategy === 'S2_DIAGNOSIS';
     const hasResult = !!struggleDiagnosis;
-    const showResultUI = isDiagnosing || hasResult;
+    const showResultUI = isDiagnosing || hasResult || isFailed;
     const showNudgeUI = isStruggleDetected && !showResultUI;
     const isVisible = (showNudgeUI || showResultUI) && !isIdeaSparkDetected;
 
@@ -148,73 +149,68 @@ export const StruggleNudge = () => {
                         <button
                             onClick={() => {
                                 editor.getEditorState().read(() => {
+                                    // Get Full Text with Cursor Marker
                                     const root = editor.getRootElement();
-                                    const fullText = root?.innerText || '';
-
-                                    // Get Focal Segment (Current Paragraph or Selection)
                                     const selection = $getSelection();
-                                    let focalSegment = '';
+                                    let contextWithCursor = '';
 
                                     if ($isRangeSelection(selection)) {
-                                        focalSegment = selection.getTextContent();
-                                        // If selection is empty (collapsed), get the current sentence
-                                        if (!focalSegment) {
-                                            const anchor = selection.anchor;
-                                            const anchorNode = anchor.getNode();
+                                        const anchor = selection.anchor;
+                                        const anchorNode = anchor.getNode();
+                                        const offset = anchor.offset;
 
-                                            // 1. Get the Top Level Element (Paragraph)
-                                            const element = anchorNode.getKey() === 'root' ? anchorNode : anchorNode.getTopLevelElementOrThrow();
-                                            const paragraphText = element.getTextContent();
+                                        // We need to construct text and insert marker
+                                        // Simple approach: Get all text, but that loses position match.
+                                        // Better: Iterate paragraphs.
 
-                                            // 2. Calculate Cursor Offset within the Paragraph
-                                            let cursorOffset = anchor.offset;
+                                        // Actually, for Diagnosis, Paragraph-level context with Cursor is usually sufficient and safer to calculate.
+                                        // But user asked for "Writing Context" with cursor.
 
-                                            // If anchor is TextNode, we need to add lengths of previous siblings
-                                            if ($isTextNode(anchorNode)) {
-                                                let sibling = anchorNode.getPreviousSibling();
-                                                while (sibling) {
-                                                    cursorOffset += sibling.getTextContentSize();
-                                                    sibling = sibling.getPreviousSibling();
+                                        // Let's rely on Lexical's node traversal to build the string + marker.
+                                        let textBuilder = '';
+                                        const topLevelChildren = editor.getEditorState().read(() => $getRoot().getChildren());
+
+                                        for (const child of topLevelChildren) {
+                                            const childText = child.getTextContent();
+
+                                            // Check if cursor is in this child (or its descendants)
+                                            const childKey = child.getKey();
+                                            const anchorKey = anchorNode.getKey();
+                                            const anchorTopLevel = anchorNode.getTopLevelElementOrThrow().getKey();
+
+                                            if (childKey === anchorTopLevel) {
+                                                // Cursor is in this block.
+                                                // We need to find the insertion point.
+                                                // If anchor is TextNode:
+                                                if ($isTextNode(anchorNode)) {
+                                                    // We need absolute offset relative to this block's text
+                                                    let absoluteOffset = offset;
+                                                    let sibling = anchorNode.getPreviousSibling();
+                                                    while (sibling) {
+                                                        absoluteOffset += sibling.getTextContentSize();
+                                                        sibling = sibling.getPreviousSibling();
+                                                    }
+
+                                                    // Insert Marker
+                                                    const markedText = childText.slice(0, absoluteOffset) + ' [CURSOR] ' + childText.slice(absoluteOffset);
+                                                    textBuilder += markedText + '\n\n';
+                                                } else {
+                                                    // Anchor is element (offset is child index).
+                                                    // For simplicity, just append to end of this block if ambiguous
+                                                    textBuilder += childText + ' [CURSOR]\n\n';
                                                 }
+                                            } else {
+                                                textBuilder += childText + '\n\n';
                                             }
-                                            // If anchor is Element (e.g. at start of block), offset is usually child index, but for text extraction usually 0 if empty
-
-                                            // 3. Find Sentence Boundaries
-                                            // Search backwards for [.?!] + space/end
-                                            const sentenceEndRegex = /[.?!]\s+/;
-
-                                            // Simple backward search
-                                            let start = 0;
-                                            let end = paragraphText.length;
-
-                                            // Find start: last invalid punctuation before cursor
-                                            for (let i = cursorOffset - 1; i >= 0; i--) {
-                                                const char = paragraphText[i];
-                                                if (['.', '?', '!'].includes(char)) {
-                                                    // Check if it's really an end (followed by space or is end)
-                                                    // But we are going backwards. 
-                                                    // If we hit ., we assume it's the end of the PREVIOUS sentence.
-                                                    // So our sentence starts at i + 1 (plus skip whitespace)
-                                                    start = i + 1;
-                                                    break;
-                                                }
-                                            }
-
-                                            // Find end: first punctuation after cursor
-                                            for (let i = cursorOffset; i < paragraphText.length; i++) {
-                                                const char = paragraphText[i];
-                                                if (['.', '?', '!'].includes(char)) {
-                                                    end = i + 1; // Include the punctuation
-                                                    break;
-                                                }
-                                            }
-
-                                            focalSegment = paragraphText.slice(start, end).trim();
                                         }
+                                        contextWithCursor = textBuilder.trim();
+                                    } else {
+                                        // Fallback if no selection
+                                        contextWithCursor = root?.innerText || '';
                                     }
 
                                     triggerIntervention({
-                                        writing_context: focalSegment
+                                        writing_context: contextWithCursor
                                     }, 'S2_DIAGNOSIS');
                                 });
                             }}
@@ -231,6 +227,19 @@ export const StruggleNudge = () => {
                     <div className="flex flex-col items-center justify-center py-6 gap-3">
                         <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
                         <span className="text-xs text-gray-400">문맥을 분석하고 있습니다...</span>
+                    </div>
+                )}
+
+                {/* Error UI */}
+                {interventionStatus === 'failed' && selectedStrategy === 'S2_DIAGNOSIS' && (
+                    <div className="flex flex-col items-center justify-center py-4 gap-2">
+                        <span className="text-xs text-red-400 font-medium">Diagnosis Failed.</span>
+                        <button
+                            onClick={() => triggerIntervention(undefined, 'S2_DIAGNOSIS')}
+                            className="text-[10px] text-gray-400 hover:text-white underline"
+                        >
+                            Try Again
+                        </button>
                     </div>
                 )}
 

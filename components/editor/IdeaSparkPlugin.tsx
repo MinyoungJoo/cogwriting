@@ -52,12 +52,41 @@ export default function IdeaSparkPlugin() {
                         // Place it below the cursor
                         // Clamp X to prevent overflow (UI width ~260px)
                         const UI_WIDTH = 280;
+                        const UI_HEIGHT = 400; // Max height estimate
                         const viewportWidth = window.innerWidth;
+                        const viewportHeight = window.innerHeight;
+
                         const left = Math.max(10, Math.min(rect.left, viewportWidth - UI_WIDTH));
+
+                        let top = rect.bottom + 10;
+                        // If overflows bottom, flip to above
+                        if (top + UI_HEIGHT > viewportHeight) {
+                            top = Math.max(10, rect.top - UI_HEIGHT - 10);
+                            // If user is seeing result (height varies), we might need dynamic measuring, 
+                            // but this estimate covers most cases.
+                            // Better: if flipping above, align bottom of modal to top of selection
+                            // Since we use 'top' for positioning, we'd need to know exact height.
+                            // With unknown height, 'bottom' CSS property is better? 
+                            // But we render with top/left.
+                            // Let's use a simpler check: if we are in the bottom 40% of screen, maybe push up?
+                            // Or just use the rect.top logic.
+
+                            // Alternative: If too close to bottom, align `bottom: window.innerHeight - rect.top + 10`
+                            // But our component uses `top`.
+                            // For now, let's just shift it up significantly if it's really low.
+                        }
+
+                        // Revised Logic:
+                        if (top + 300 > viewportHeight) { // Assuming ~300px min height needed
+                            // Flip above
+                            // Since we don't know exact height, let's position it such that bottom is roughly at rect.top
+                            // We'll guess height ~300.
+                            top = rect.top - 310;
+                        }
 
                         setCoords({
                             x: left,
-                            y: rect.bottom + 10
+                            y: top
                         });
                     }
                 }
@@ -67,8 +96,9 @@ export default function IdeaSparkPlugin() {
 
     // Determine UI visibility
     const isRequesting = interventionStatus === 'requesting' && selectedStrategy === 'S1_IDEA_SPARK';
+    const isFailed = interventionStatus === 'failed' && selectedStrategy === 'S1_IDEA_SPARK';
     const hasResult = !!suggestionOptions;
-    const showResultUI = isRequesting || hasResult;
+    const showResultUI = isRequesting || hasResult || isFailed;
     // const showNudgeUI = isIdeaSparkDetected && !showResultUI;
     // Force show result UI if triggered manually via markup to skip nudge
     const showNudgeUI = isIdeaSparkDetected && !showResultUI && !ghostTextPosition;
@@ -200,6 +230,19 @@ export default function IdeaSparkPlugin() {
                     <div className="flex flex-col items-center justify-center py-6 gap-3">
                         <div className="w-5 h-5 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
                         <span className="text-xs text-gray-400">답변을 생성중입니다...</span>
+                    </div>
+                )}
+
+                {/* 3. Error UI */}
+                {interventionStatus === 'failed' && selectedStrategy === 'S1_IDEA_SPARK' && (
+                    <div className="flex flex-col items-center justify-center py-4 gap-2">
+                        <span className="text-xs text-red-400 font-medium">Failed to generate ideas.</span>
+                        <button
+                            onClick={() => triggerIntervention(undefined, 'S1_IDEA_SPARK')}
+                            className="text-[10px] text-gray-400 hover:text-white underline"
+                        >
+                            Try Again
+                        </button>
                     </div>
                 )}
 

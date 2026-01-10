@@ -49,16 +49,19 @@ export async function POST(req: Request) {
 
         // Construct Writing Context (Handle Custom Context Data)
         let finalWritingContext = writing_context;
-        if ((strategy_id === 'S2_DIAGNOSIS' || strategy_id === 'S2_LOGIC_AUDITOR' || strategy_id === 'S2_STRUCTURAL_MAPPING' || strategy_id === 'S2_TONE_REFINEMENT') && context_data) {
-            finalWritingContext = `
-    - Full Context: ${context_data.fullText}
-    - Focal Segment (where struggle occurs): >>> ${context_data.focalSegment} <<<
-             `.trim();
+        // [MODIFIED] No longer separating Full Context and Focal Segment.
+        // The writing_context now contains the [CURSOR] marker for S2_DIAGNOSIS.
+
+        let finalSystemInstruction = system_instruction;
+        // Add specific instruction for Diagnosis to find the cursor
+        if (strategy_id === 'S2_DIAGNOSIS') {
+            finalSystemInstruction += "\n\n[IMPORTANT] The user's cursor position is marked by '[CURSOR]'. Analyze the text immediately surrounding this marker to determine the context of the struggle.";
         }
 
         // Determine Genre Context
         const writingGenre = context_data?.writingGenre || 'General';
         const writingTopic = context_data?.writingTopic || 'Not set';
+        const writingPrompt = context_data?.writingPrompt || writingTopic; // [MODIFIED] Use Prompt Text if available, fallback to Topic (ID/Text)
         const writingAudience = context_data?.writingAudience || 'General';
         const userGoal = context_data?.userGoal || 'Not set';
 
@@ -68,23 +71,23 @@ You are an AI Writing Assistant.
 Your task is to execute the specific strategy requested by the system.
 You must always respond in Korean unless explicitly asked otherwise.
 
+# { STRATEGY_INSTRUCTION } (PRIMARY DIRECTIVE)
+${finalSystemInstruction}
+
 # { Meta Layer }
 - Writing Context: ${writingGenre}
-- Assigned Topic: ${writingTopic}
+- Assigned Topic: ${writingPrompt}
 - Audience: ${writingAudience}
 - User's Specific Goal: >>> ${userGoal} <<<
 
-# { INSTRUCTION }
+# { CONTEXT_GUIDELINES }
 너는 위 '# { Meta layer}' 에 포함된 context, topic, audience 바탕으로 글쓰기를 돕는 파트너이다. 
 항상 아래 '# { INPUTS }' 섹션에 제공된 사용자의 현재 쓴 글'Writing Context'을 바탕으로 답변해라.
 응답을 생성할떄, User's Specific Goal에 맞추어서 응답을 생성해라.
 
-# { STRATEGY_INSTRUCTION }
-${system_instruction}
-
 # { INPUTS }
 - Strategy ID: ${strategy_id}
-- Writing Context: ${context_data.fullText}
+- Writing Context: ${finalWritingContext}
 
 # { OUTPUT_FORMAT }
 Respond strictly in JSON format.

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { api } from '@/src/lib/api';
 import { Phase, CognitiveState, StrategyID, Strategy, selectStrategy, getStrategy } from '@/src/lib/strategy';
 import { MonitorPayload, monitorAgent } from '@/src/lib/MonitorAgent';
 
@@ -105,13 +106,22 @@ interface AppState {
     systemMode: 'hybrid' | 's1' | 's2';
     setSystemMode: (mode: 'hybrid' | 's1' | 's2') => void;
 
+    // Experiment Data
+    participantId: string | null;
+    sessionId: string | null;
+    setParticipantId: (id: string | null) => void;
+    setSessionId: (id: string | null) => void;
+    resetSession: () => void;
+
     // Writing Genre
     writingGenre: 'creative' | 'argumentative' | null;
     setWritingGenre: (genre: 'creative' | 'argumentative' | null) => void;
 
     // Goal Setting
     writingTopic: string | null;
+    writingPrompt: string | null; // [NEW]
     setWritingTopic: (topic: string) => void;
+    setWritingPrompt: (prompt: string | null) => void; // [NEW]
     writingAudience: string | null;
     setWritingAudience: (audience: string) => void;
     userGoal: string | null;
@@ -126,6 +136,22 @@ const useStore = create<AppState>()(persist((set, get) => ({
 
     systemMode: 'hybrid',
     setSystemMode: (mode) => set({ systemMode: mode }),
+
+    // Experiment Data
+    participantId: null,
+    sessionId: null,
+    setParticipantId: (id) => set({ participantId: id }),
+    setSessionId: (id) => set({ sessionId: id }),
+    resetSession: () => set({
+        sessionId: null,
+        chatSessions: {},
+        content: '',
+        keystrokes: [],
+        actionHistory: [],
+        feedbackItems: [],
+        userGoal: null,
+        isGoalSet: false
+    }),
 
     writingGenre: null,
     setWritingGenre: (genre) => {
@@ -143,13 +169,16 @@ const useStore = create<AppState>()(persist((set, get) => ({
         set({
             writingGenre: genre,
             writingTopic: topic,
+            writingPrompt: topic, // [NEW] Ensure prompt is also set for display
             writingAudience: audience
         });
     },
 
     // Goal Setting Defaults & Actions
     writingTopic: '최근 인상 깊었던 실제 경험을 하나 떠올려서 1인칭 주인공 시점의 영화 시나리오를 써보세요', // Predefined default
+    writingPrompt: null,
     setWritingTopic: (topic) => set({ writingTopic: topic }),
+    setWritingPrompt: (prompt) => set({ writingPrompt: prompt }),
     writingAudience: 'General Audience', // Predefined default
     setWritingAudience: (audience) => set({ writingAudience: audience }),
     userGoal: null,
@@ -463,13 +492,42 @@ const useStore = create<AppState>()(persist((set, get) => ({
         // Meta Layer Injection
         const metaContext = {
             writingGenre: get().writingGenre,
-            writingTopic: get().writingTopic,
+            writingTopic: get().writingTopic, // ID
+            writingPrompt: get().writingPrompt || get().writingTopic, // [NEW] Full Prompt with Fallback
             writingAudience: get().writingAudience,
             userGoal: get().userGoal
         };
         payload = { ...payload, ...metaContext };
 
         try {
+            // Log Interaction Start
+            const sessionId = get().sessionId;
+            if (sessionId) {
+                try {
+                    const pending = get().pendingPayload;
+                    const isSystemInitiated = pending && (pending.trigger_reason === 'IDEA_SPARK' || pending.trigger_reason === 'STRUGGLE_DETECTION');
+
+                    api.logs.saveInteraction({
+                        session_id: sessionId,
+                        participant_id: get().participantId || 'anonymous',
+                        cognitive_type: strategyIdToUse.startsWith('S1') ? 'S1' : 'S2',
+                        initiative: isSystemInitiated ? 'System' : 'User',
+                        feature_type: strategyIdToUse,
+                        writing_context: get().content, // [NEW] Full Text
+                        focal_segment: payload.target_text || '', // [NEW] Segment
+                        ai_response: null, // Initial request has no response yet, updated later via PATCH if needed
+                        trigger_metrics: {
+                            revision_ratio: get().revisionRatio,
+                            pause_duration: payload.stuck_duration || 0,
+                            cpm: (get().cpm || 0)
+                        },
+                        user_action: 'IGNORE' // Default state until user reacts
+                    });
+                } catch (e) {
+                    console.error('Failed to log interaction start', e);
+                }
+            }
+
             const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -514,11 +572,17 @@ const useStore = create<AppState>()(persist((set, get) => ({
                     if (!diagnosisData.logic && !diagnosisData.structure) {
                         const stringfields = ['suggestion_content', 'content', 'message'];
                         for (const field of stringfields) {
-                            if (typeof diagnosisData[field] === 'string' && diagnosisData[field].trim().startsWith('{')) {
-                                try {
-                                    const parsedNested = JSON.parse(diagnosisData[field]);
-                                    Object.keys(parsedNested).forEach(key => diagnosisData[key.toLowerCase()] = parsedNested[key]);
-                                } catch (e) { /* ignore parse error */ }
+                            if (typeof diagnosisData[field] === 'string') {
+                                let content = diagnosisData[field].trim();
+                                // Remove markdown code blocks if present
+                                content = content.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+
+                                if (content.startsWith('{')) {
+                                    try {
+                                        const parsedNested = JSON.parse(content);
+                                        Object.keys(parsedNested).forEach(key => diagnosisData[key.toLowerCase()] = parsedNested[key]);
+                                    } catch (e) { /* ignore parse error */ }
+                                }
                             }
                         }
                     }
@@ -575,10 +639,38 @@ const useStore = create<AppState>()(persist((set, get) => ({
                 }
 
                 if (strategy.id === 'S1_IDEA_SPARK') {
-                    if (data.suggestion_options) {
-                        set({ suggestionOptions: data.suggestion_options });
-                    } else if (Array.isArray(data.content)) {
-                        set({ suggestionOptions: data.content });
+                    let options = data.suggestion_options || data.content || data.suggestion_content;
+
+                    // Try parsing if it's a string
+                    if (typeof options === 'string') {
+                        try {
+                            // Check if it looks like JSON
+                            if (options.trim().startsWith('[') || options.trim().startsWith('{')) {
+                                const parsed = JSON.parse(options);
+                                options = parsed.suggestion_options || parsed.content || parsed;
+                            }
+                        } catch (e) {
+                            console.warn('[Store] Failed to parse Idea Spark options JSON', e);
+                            // Fallback: If it's a newline separated string, split it
+                            if (options.includes('\n')) {
+                                options = options.split('\n').filter((s: string) => s.trim().length > 0);
+                            } else {
+                                options = [options];
+                            }
+                        }
+                    }
+
+                    if (Array.isArray(options)) {
+                        // Clean up strings (remove leading numbers like "1. ", "- ")
+                        const cleaned = options.map((opt: any) =>
+                            typeof opt === 'string' ? opt.replace(/^\d+[\.\)]\s*|-\s*/, '').trim() : JSON.stringify(opt)
+                        );
+                        set({ suggestionOptions: cleaned });
+                    } else if (typeof options === 'object' && options !== null) {
+                        // If it's an object but not array, maybe values?
+                        set({ suggestionOptions: Object.values(options).map(String) });
+                    } else if (options) {
+                        set({ suggestionOptions: [String(options)] });
                     }
                 }
 

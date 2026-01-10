@@ -9,9 +9,9 @@ import { Scale, UserCheck, MessageCircle, Brain, Layout, Search, LayoutList, Boo
 const S2_TOOLS = [
     { id: 'S2_LOGIC_AUDITOR', label: 'Logic', icon: Search },
     { id: 'S2_STRUCTURAL_MAPPING', label: 'Structure', icon: LayoutList },
-    { id: 'S2_THIRD_PARTY_AUDITOR', label: 'Review', icon: UserCheck },
-    { id: 'S2_EVIDENCE_SUPPORT', label: 'Evidence', icon: BookOpen },
     { id: 'S2_TONE_REFINEMENT', label: 'Tone', icon: Palette },
+    { id: 'S2_EVIDENCE_SUPPORT', label: 'Evidence', icon: BookOpen },
+    { id: 'S2_THIRD_PARTY_AUDITOR', label: 'Auditor', icon: UserCheck },
 ];
 
 export default function SelectionMenuPlugin() {
@@ -40,6 +40,14 @@ export default function SelectionMenuPlugin() {
 
         // 2. Prepare Payload
         const prompt = inputValue.trim() || (activeToolId ? `Execute ${activeToolId}` : 'Refine this');
+
+        // [NEW] Add User Message to Chat History so it appears in the panel
+        const chatMessageContent = `**Request:** ${prompt}\n\n**Context:**\n> ${selectedText}`;
+
+        useStore.getState().addChatMessage({
+            role: 'user',
+            content: chatMessageContent
+        }, strategy);
 
         const payload = monitorAgent.manual_trigger(prompt);
         payload.writing_context = selectedText;
@@ -88,6 +96,13 @@ export default function SelectionMenuPlugin() {
 
                     const domSelection = window.getSelection();
                     if (domSelection && domSelection.rangeCount > 0) {
+                        const rootElement = editor.getRootElement();
+                        // Ensure selection is actually inside this editor
+                        if (rootElement && !rootElement.contains(domSelection.anchorNode)) {
+                            setCoords(null);
+                            return;
+                        }
+
                         const range = domSelection.getRangeAt(0);
                         const rect = range.getBoundingClientRect();
                         const rects = Array.from(range.getClientRects());
@@ -95,16 +110,16 @@ export default function SelectionMenuPlugin() {
                         setSelectionRects(rects);
 
                         // Calculate position
-                        const MENU_HEIGHT = 100; // Estimated height
+                        // Calculate position
+                        const MENU_HEIGHT = 120; // Estimated height
                         const GAP = 10;
-                        let top = rect.top - MENU_HEIGHT - GAP;
 
-                        // If not enough space above, show below
-                        if (top < 0) {
-                            top = rect.bottom + GAP;
-                        } else {
-                            // Default to above, but slightly closer
-                            top = rect.top - 50;
+                        // Default: Show BELOW the selection to avoid obscuring dragged text
+                        let top = rect.bottom + GAP;
+
+                        // If it overflows the bottom of the viewport, show ABOVE
+                        if (top + MENU_HEIGHT > window.innerHeight) {
+                            top = rect.top - MENU_HEIGHT - GAP;
                         }
 
                         setCoords({
@@ -128,6 +143,10 @@ export default function SelectionMenuPlugin() {
         const handleMouseUp = (e: MouseEvent) => {
             // Ignore if clicking inside menu
             if (menuRef.current && menuRef.current.contains(e.target as Node)) return;
+
+            // Only update if clicking inside the editor
+            const root = editor.getRootElement();
+            if (root && !root.contains(e.target as Node)) return;
 
             // Short timeout to let selection settle
             setTimeout(updateMenu, 10);

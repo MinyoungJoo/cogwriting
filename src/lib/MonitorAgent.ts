@@ -1,4 +1,6 @@
 import { Phase, CognitiveState } from './strategy';
+import { api } from '@/src/lib/api';
+import useStore from '@/store/useStore';
 
 export interface LogEntry {
     timestamp: number;
@@ -54,6 +56,10 @@ export class MonitorAgent {
     // Trigger Cooldowns
     private trigger_cooldowns: Record<string, number>;
 
+    // Backend Logging
+    private log_buffer: Array<{ t: number; k: string; type: string; pos: number }> = [];
+    private flush_interval: NodeJS.Timeout;
+
     constructor() {
         this.last_action_time = Date.now() / 1000;
         this.last_trigger_time = 0;
@@ -80,6 +86,64 @@ export class MonitorAgent {
         this.total_pause_time = 0;
         this.total_active_time = 0;
         this.trigger_cooldowns = {};
+
+        // Start Flush Loop (5s)
+        this.flush_interval = setInterval(() => this.flush_logs(), 5000);
+    }
+
+    private async snapshot_content() {
+        const sessionId = useStore.getState().sessionId;
+        const currentContent = this.current_text;
+
+        if (!sessionId || !currentContent) return;
+
+        try {
+            // We can re-use the interaction log or a specific 'snapshot' event in logs
+            // For now, let's log it as a special event type in the log stream
+            this.log_buffer.push({
+                t: Date.now(),
+                k: 'AUTO_SNAPSHOT',
+                type: 'SNAPSHOT', // Custom type needing support or just treated as info
+                pos: this.cursor_index
+            });
+            // We could also potentially update the Session document's "last_content" field directly if we had an endpoint
+            // but logging it ensures playback integrity.
+
+            // To be safe, let's also force a flush
+            this.flush_logs();
+        } catch (e) {
+            console.error('[Monitor] Failed to snapshot content', e);
+        }
+    }
+
+    public async forceFlush() {
+        await this.snapshot_content(); // Take a final snapshot
+        await this.flush_logs();
+    }
+
+    private async flush_logs() {
+        if (this.log_buffer.length === 0) return;
+
+        const sessionId = useStore.getState().sessionId;
+        if (!sessionId) {
+            // Keep buffer but maybe limit size to prevent overflow if session never starts?
+            if (this.log_buffer.length > 5000) this.log_buffer = [];
+            return;
+        }
+
+        const batch = [...this.log_buffer];
+        this.log_buffer = []; // Clear immediate
+
+        try {
+            await api.logs.save({
+                session_id: sessionId,
+                events: batch
+            });
+            console.log(`[Monitor] Flushed ${batch.length} logs.`);
+        } catch (e) {
+            console.error('[Monitor] Failed to flush logs', e);
+            // Restore? Or drop to avoid issues. Drop is safer for prototype.
+        }
     }
 
     // Called on KeyDown (for EditRatio)
@@ -151,8 +215,26 @@ export class MonitorAgent {
             this.key_history.shift();
         }
 
+
         // Any input means Flow
         this.current_state = 'Flow';
+
+        // Buffer for Backend Log
+        let logType: 'INPUT' | 'DELETE' | 'NC' = 'INPUT';
+        if (event_code === 'Backspace' || event_code === 'Delete') logType = 'DELETE';
+        else if (event_code.startsWith('Arrow') || event_code === 'Home' || event_code === 'End' || event_code === 'PageUp' || event_code === 'PageDown') logType = 'NC';
+
+        // Don't log modifier key presses alone (Shift/Ctrl/Alt) unless we want to track them as NC?
+        // User schema says INPUT|DELETE|NC. 
+        // For now, let's treat modifiers as NC.
+        else if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab'].includes(event_code)) logType = 'NC';
+
+        this.log_buffer.push({
+            t: current_time * 1000, // ms for backend
+            k: event_code,
+            type: logType,
+            pos: this.cursor_index
+        });
     }
 
     // Called on Text Change (for WPM & Context)
@@ -179,19 +261,18 @@ export class MonitorAgent {
         }
 
         // Logic C: Advanced Triggers
-        // Helper to check cooldown
-        const checkCooldown = (trigger: string, seconds: number) => {
-            const last = this.trigger_cooldowns[trigger] || 0;
-            const diff = now - last;
-            if (diff > seconds) {
-                // console.log(`[Cooldown] Trigger ${trigger} allowed. Diff: ${diff.toFixed(1)}s > ${seconds}s`);
-                this.trigger_cooldowns[trigger] = now;
+        // Helper to check cooldown (Cooldowns store the TIMESTAMP when it becomes available)
+        const checkCooldown = (trigger: string, standard_cooldown: number) => {
+            const next_available = this.trigger_cooldowns[trigger] || 0;
+
+            if (now >= next_available) {
+                // Trigger is available!
+                // Set default cooldown for next time (can be overridden by extendCooldown)
+                this.trigger_cooldowns[trigger] = now + standard_cooldown;
                 return true;
             }
-            // console.log(`[Cooldown] Trigger ${trigger} blocked. Diff: ${diff.toFixed(1)}s <= ${seconds}s`);
             return false;
         };
-
 
 
         // 1. Struggle Detection (New Logic)
@@ -215,7 +296,6 @@ export class MonitorAgent {
                 // console.log(`[Monitor] Revision Ratio: ${revisionRatio.toFixed(2)} (Threshold: 0.6)`);
 
                 // Condition: Efficiency < 60%
-                // Condition: Efficiency < 60%
                 if (revisionRatio < 0.6) {
                     if (checkCooldown('STRUGGLE_DETECTION', 60)) {
                         console.log(`[Monitor] Struggle Detected! Ratio: ${revisionRatio.toFixed(2)}`);
@@ -238,8 +318,16 @@ export class MonitorAgent {
     }
 
     public extendCooldown(trigger: string, seconds: number) {
+        // Set absolute timestamp for next availability
         this.trigger_cooldowns[trigger] = (Date.now() / 1000) + seconds;
         console.log(`[Monitor] Extended cooldown for ${trigger} by ${seconds}s`);
+    }
+
+    public resetCooldown(trigger: string) {
+        if (this.trigger_cooldowns[trigger]) {
+            delete this.trigger_cooldowns[trigger];
+            console.log(`[Monitor] Reset cooldown for ${trigger}`);
+        }
     }
 
     private reported_block: boolean = false;

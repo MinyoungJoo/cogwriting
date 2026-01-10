@@ -3,12 +3,14 @@
 import React, { useState } from 'react';
 import useStore from '@/store/useStore';
 import { monitorAgent } from '@/src/lib/MonitorAgent';
+import { api } from '@/src/lib/api';
 import { Target, BookOpen, Users, ArrowRight, PenLine } from 'lucide-react';
 
 const GoalSettingModal = () => {
     const {
         writingGenre,
         writingTopic,
+        writingPrompt, // [NEW]
         writingAudience,
         setIsGoalSet,
         setUserGoal
@@ -17,11 +19,38 @@ const GoalSettingModal = () => {
     const [goalInput, setGoalInput] = useState(useStore.getState().userGoal || '');
     const [error, setError] = useState('');
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!goalInput.trim()) {
             setError('Please define your goal to continue.');
             return;
         }
+
+        const { participantId, setSessionId, writingPrompt, writingAudience } = useStore.getState();
+
+        if (participantId) {
+            try {
+                const session = await api.sessions.create({
+                    participant_id: participantId,
+                    meta: {
+                        topic_id: writingPrompt || 'N/A',
+                        audience: writingAudience || 'General',
+                        user_goal: goalInput,
+                        writing_genre: writingGenre || 'argumentative', // [FIX] Include Genre
+                        writing_group: useStore.getState().systemMode || 'hybrid' // [FIX] Include Mode as Group
+                    },
+                    time_metrics: {
+                        start_at: new Date()
+                    }
+                });
+                console.log('Session created:', session._id);
+                setSessionId(session._id);
+            } catch (err) {
+                console.error('Failed to create session:', err);
+            }
+        } else {
+            console.error('No participant ID found, session not created in DB.');
+        }
+
         setUserGoal(goalInput);
         setIsGoalSet(true);
         // Reset monitor agent to ensure clean start
@@ -62,7 +91,7 @@ const GoalSettingModal = () => {
                             <span className="text-xs font-semibold text-gray-500 uppercase block mb-1">Topic</span>
                             <div className="flex items-center gap-2 text-gray-200">
                                 <PenLine size={14} className="text-yellow-400 flex-shrink-0" />
-                                <span className="text-sm font-medium text-left leading-snug" title={writingTopic || ''}>{writingTopic || 'Not set'}</span>
+                                <span className="text-sm font-medium text-left leading-snug" title={writingPrompt || writingTopic || ''}>{writingPrompt || writingTopic || 'Not set'}</span>
                             </div>
                         </div>
 

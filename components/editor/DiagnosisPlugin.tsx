@@ -37,9 +37,19 @@ export default function DiagnosisPlugin() {
                     }
 
                     if (rect && (rect.top !== 0 || rect.left !== 0)) {
+                        const UI_HEIGHT = 400; // Max height
+                        const viewportHeight = window.innerHeight;
+
+                        let top = rect.bottom + 10;
+
+                        // If overflows bottom, flip to above
+                        if (top + UI_HEIGHT > viewportHeight) {
+                            top = rect.top - UI_HEIGHT - 10;
+                        }
+
                         setCoords({
                             x: rect.left,
-                            y: rect.bottom + 10
+                            y: top
                         });
                         return;
                     }

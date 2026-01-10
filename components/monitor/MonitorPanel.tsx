@@ -1,6 +1,7 @@
 'use client';
 
 import useStore from '@/store/useStore';
+import { api } from '@/src/lib/api';
 import { Activity, AlertCircle, Clock, Settings } from 'lucide-react';
 
 export default function MonitorPanel() {
@@ -31,6 +32,7 @@ export default function MonitorPanel() {
                 >
                     <Settings size={16} />
                 </button>
+
             </div>
 
 

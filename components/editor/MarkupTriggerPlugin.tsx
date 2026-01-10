@@ -109,6 +109,12 @@ export default function MarkupTriggerPlugin() {
                 const sparkMatch = textBeforeCursor.match(/\/\?\s*$/);
                 if (sparkMatch) {
                     console.log('Idea Spark Trigger Detected');
+
+                    // [FIX] Mutual Exclusion & Forced Run logic
+                    useStore.getState().setStruggleDetected(false); // Hide Diagnosis if active
+                    monitorAgent.resetCooldown('IDEA_SPARK'); // Allow immediate re-trigger
+                    useStore.getState().setIdeaSparkDetected(true); // Force enable UI
+
                     const strategy = getStrategy('S1_IDEA_SPARK');
                     const payload = monitorAgent.manual_trigger('Help me find ideas');
 

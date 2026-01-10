@@ -1,7 +1,8 @@
 import useStore from '@/store/useStore';
+import { api } from '@/src/lib/api';
 import { Sparkles, Send, MessageSquare, Search, LayoutList, UserCheck, BookOpen, Palette, Play, FileText, Wrench } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
-import { selectStrategy } from '@/src/lib/strategy';
+import { selectStrategy, getStrategy } from '@/src/lib/strategy';
 import { monitorAgent } from '@/src/lib/MonitorAgent';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -18,7 +19,8 @@ export default function AssistPanel() {
         cognitiveState,
         setSelectedStrategy,
         setPendingPayload,
-        setStruggleDetected // Import setStruggleDetected
+        setStruggleDetected, // Import setStruggleDetected
+        setIdeaSparkDetected // [FIX] Import setIdeaSparkDetected
     } = useStore();
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -42,18 +44,40 @@ export default function AssistPanel() {
     const handleSend = async () => {
         if (!input.trim()) return;
 
+        const sessionId = useStore.getState().sessionId;
+        const participantId = useStore.getState().participantId;
+
         const userMessage = { role: 'user' as const, content: input };
         addChatMessage(userMessage, currentSessionId);
         setInput('');
         setIsLoading(true);
 
+        // Save User Message to DB
+        if (sessionId) {
+            try {
+                await api.logs.saveChatLog({
+                    session_id: sessionId,
+                    participant_id: participantId || 'anonymous',
+                    strategy_id: currentSessionId, // [NEW] Pass the current strategy ID
+                    messages: [{
+                        role: 'user',
+                        content: userMessage.content,
+                        timestamp: new Date()
+                    }]
+                });
+            } catch (e) {
+                console.error('Failed to log user message', e);
+            }
+        }
+
         try {
             // Use selected strategy if available, otherwise potential strategy
             const strategyId = selectedStrategy || potentialStrategy?.id || 'CHAT_DEFAULT';
+            const strategyDef = getStrategy(strategyId as any);
 
             const payload = {
                 strategy_id: strategyId,
-                system_instruction: 'You are a helpful writing assistant. Respond in Korean.',
+                system_instruction: strategyDef?.systemInstruction || 'You are a helpful writing assistant. Respond in Korean.',
                 writing_context: content,
                 trigger_reason: 'USER_PROMPT',
                 user_prompt: input,
@@ -85,11 +109,30 @@ export default function AssistPanel() {
             const responseContent = data.suggestion_content || data.message || data.content;
 
             if (responseContent) {
-                addChatMessage({
-                    role: 'assistant',
+                const aiMessage = {
+                    role: 'assistant' as const,
                     content: typeof responseContent === 'string' ? responseContent : JSON.stringify(responseContent),
                     strategy: strategyId
-                }, currentSessionId);
+                };
+                addChatMessage(aiMessage, currentSessionId);
+
+                // Save AI Message to DB
+                if (sessionId) {
+                    try {
+                        await api.logs.saveChatLog({
+                            session_id: sessionId,
+                            participant_id: participantId || 'anonymous',
+                            strategy_id: currentSessionId, // [NEW] Pass the current strategy ID
+                            messages: [{
+                                role: 'assistant',
+                                content: aiMessage.content,
+                                timestamp: new Date()
+                            }]
+                        });
+                    } catch (e) {
+                        console.error('Failed to log AI message', e);
+                    }
+                }
             } else {
                 // Only show WAIT if truly no content found
                 addChatMessage({
