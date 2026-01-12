@@ -57,9 +57,9 @@ const GoalHeader = () => {
             <div className="flex-1 min-w-0">
                 {/* [NEW] Topic Display - Plain Text */}
                 {writingTopic && (
-                    <div className="flex items-center gap-1.5 mb-2">
-                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Topic:</span>
-                        <span className="text-sm text-gray-900 font-medium truncate max-w-full">
+                    <div className="flex items-start gap-1.5 mb-2">
+                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mt-0.5">Topic:</span>
+                        <span className="text-sm text-gray-900 font-medium break-words leading-snug">
                             {writingPrompt || writingTopic}
                         </span>
                     </div>
