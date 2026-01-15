@@ -110,9 +110,12 @@ interface AppState {
     // Experiment Data
     participantId: string | null;
     sessionId: string | null;
+    isAdmin: boolean; // [NEW] Persisted Admin State
     setParticipantId: (id: string | null) => void;
     setSessionId: (id: string | null) => void;
+    setIsAdmin: (isAdmin: boolean) => void; // [NEW]
     resetSession: () => void;
+
 
     // Writing Genre
     writingGenre: 'creative' | 'argumentative' | null;
@@ -141,8 +144,10 @@ const useStore = create<AppState>()(persist((set, get) => ({
     // Experiment Data
     participantId: null,
     sessionId: null,
+    isAdmin: false,
     setParticipantId: (id) => set({ participantId: id }),
     setSessionId: (id) => set({ sessionId: id }),
+    setIsAdmin: (isAdmin) => set({ isAdmin }),
     resetSession: () => set({
         sessionId: null,
         chatSessions: {},
@@ -705,6 +710,7 @@ const useStore = create<AppState>()(persist((set, get) => ({
         userGoal: state.userGoal,
         writingGenre: state.writingGenre,
         activeWritingPrompt: state.activeWritingPrompt,
+        isAdmin: state.isAdmin, // [NEW] Persist Admin State
     }),
 }));
 

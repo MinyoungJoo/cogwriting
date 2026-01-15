@@ -316,10 +316,6 @@ export class MonitorAgent {
         if (idle_time >= 10.0) {
             // [MODIFIED] If a Writing Prompt is already pinned (user selected one), do NOT trigger Idea Spark again.
             // The user considers Idea Spark "done" if the prompt is visible.
-            if (useStore.getState().activeWritingPrompt) {
-                return null;
-            }
-
             if (checkCooldown('IDEA_SPARK', 60)) {
                 return this.create_payload('IDEA_SPARK');
             }

@@ -11,14 +11,12 @@ import PilotLinkGenerator from '@/components/dashboard/PilotLinkGenerator';
 import { TOPICS } from '@/src/lib/topics';
 
 function HomeContent() {
-  const { writingGenre, setWritingGenre, participantId, setParticipantId } = useStore();
+  const { writingGenre, setWritingGenre, participantId, setParticipantId, isAdmin, setIsAdmin } = useStore();
   const searchParams = useSearchParams();
 
   const [showDashboard, setShowDashboard] = useState(false);
   const [showGenerator, setShowGenerator] = useState(false);
-  // isAdmin is now true if they logged in with password.
-  // If they came via URL (?pid=...), they bypass login but isAdmin remains false.
-  const [isAdmin, setIsAdmin] = useState(false);
+  // isAdmin is now managed by useStore (persisted)
 
   const [viewSessionId, setViewSessionId] = useState<string | null>(null);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
@@ -32,8 +30,9 @@ function HomeContent() {
     if (urlPid) {
       setParticipantId(urlPid);
       // URL visitors are NOT admins by default
+      setIsAdmin(false);
     }
-  }, [searchParams, setParticipantId]);
+  }, [searchParams, setParticipantId, setIsAdmin]);
 
   // Handle manual Login (PID + Password)
   const handleLoginSubmit = (e: React.FormEvent) => {
