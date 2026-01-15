@@ -279,8 +279,8 @@ export default function AssistPanel() {
 
 
 
-                {/* Chat Area - Only show if S2 strategy is selected */}
-                {selectedStrategy && selectedStrategy.startsWith('S2_') ? (
+                {/* Chat Area - Only show if S2 strategy is selected AND NOT Diagnosis */}
+                {selectedStrategy && selectedStrategy.startsWith('S2_') && selectedStrategy !== 'S2_DIAGNOSIS' ? (
                     <>
                         <div className={`flex-1 overflow-y-auto p-4 space-y-4 relative ${useStore.getState().unreadDiagnosis[selectedStrategy] ? 'animate-pulse bg-yellow-900/10' : ''
                             }`}

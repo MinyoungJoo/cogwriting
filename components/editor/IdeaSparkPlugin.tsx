@@ -111,7 +111,7 @@ export default function IdeaSparkPlugin() {
     // 4. So showNudgeUI becomes false.
     // This seems correct for skipping the nudge.
 
-    const isVisible = (showNudgeUI || showResultUI) && !isStruggleDetected;
+    const isVisible = (showNudgeUI || showResultUI);
 
     // Update position when UI is active and on editor updates
     useEffect(() => {
@@ -178,7 +178,17 @@ export default function IdeaSparkPlugin() {
         handleClose();
     };
 
-    if (!isVisible) return null;
+    // [MODIFIED] Log Throttling (10s)
+    const lastLogRef = useRef(0);
+
+    if (!isVisible) {
+        const now = Date.now();
+        if (now - lastLogRef.current > 10000) {
+            console.log('[IdeaSpark] Hidden (isIdeaSparkDetected:', isIdeaSparkDetected, ', hasResult:', hasResult, ')');
+            lastLogRef.current = now;
+        }
+        return null;
+    }
 
     return createPortal(
         <div

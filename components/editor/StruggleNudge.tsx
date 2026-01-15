@@ -19,6 +19,7 @@ export const StruggleNudge = () => {
     const setInterventionStatus = useStore(state => state.setInterventionStatus);
     const acceptStruggleDiagnosis = useStore(state => state.acceptStruggleDiagnosis);
     const selectedStrategy = useStore(state => state.selectedStrategy);
+    const activeWritingPrompt = useStore(state => state.activeWritingPrompt); // [Moved to Top Level]
 
     const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
 
@@ -64,7 +65,39 @@ export const StruggleNudge = () => {
     const hasResult = !!struggleDiagnosis;
     const showResultUI = isDiagnosing || hasResult || isFailed;
     const showNudgeUI = isStruggleDetected && !showResultUI;
-    const isVisible = (showNudgeUI || showResultUI) && !isIdeaSparkDetected;
+
+    // [MODIFIED] Visibility Logic
+    // Allow S2 to show if Idea Spark yielded a result (activeWritingPrompt exists)
+    // The previous logic hid S2 if isIdeaSparkDetected was true.
+    // Ideally, when Idea Spark finishes (user selects a prompt), isIdeaSparkDetected should be false.
+    // But if it persists, we can just check if we are in a blocking state.
+    const isIdeaSparkBlocking = isIdeaSparkDetected && !activeWritingPrompt; // [Correct Usage] Use variable declared at top
+
+    // Actually, IdeaSparkPlugin sets isIdeaSparkDetected=false when a prompt is selected.
+    // So the user likely means: "If I have the Idea Spark UI open, but I ignore it and keep writing, show S2?"
+    // OR "If I selected a prompt and it's pinned at the top, show S2."
+
+    // User Request: "idea spark writing prompt 를 띄우고 있는 상태에서는 s1, s2 떠도 괜찮아"
+    // This implies overlapping UIs might be okay, or rather, the pinning of the prompt shouldn't block checking.
+
+    // Current Code: const isVisible = (showNudgeUI || showResultUI) && !isIdeaSparkDetected;
+    // If isIdeaSparkDetected is true, S2 is hidden.
+    // If the user selects a prompt, IdeaSparkPlugin calls handleClose() -> setIdeaSparkDetected(false).
+    // So usually S2 SHOULD appear.
+
+    // Perhaps the user means the 'Result List' of Idea Spark?
+    // If suggestionOptions are showing.
+
+    // Let's relax the condition:
+    // Only block if Idea Spark is in the initial 'Nudge' phase or 'Loading' phase?
+    // If Idea Spark is showing results (list), maybe we still block?
+
+    // Interpretation: "Even if Idea Spark is active (detected), allow S2."
+    // Let's try removing the !isIdeaSparkDetected check entirely, relying on screen space?
+    // Or just check if they are spatially overlapping? (Hard)
+
+    // Let's implement what was asked literally: Allow overlap.
+    const isVisible = (showNudgeUI || showResultUI); // Removed && !isIdeaSparkDetected
 
     useEffect(() => {
         // Update position if any UI is active
@@ -110,9 +143,16 @@ export const StruggleNudge = () => {
         left: (typeof window !== 'undefined' ? window.innerWidth / 2 - 130 : 0)
     };
 
+    // [MODIFIED] Log Throttling (10s)
+    const lastLogRef = React.useRef(0);
+
     // Return null if nothing to show
     if (!isVisible) {
-        console.log('[StruggleNudge] Hidden (isStruggleDetected:', isStruggleDetected, ', ShowResult:', showResultUI, ', ideaSpark:', isIdeaSparkDetected, ')');
+        const now = Date.now();
+        if (now - lastLogRef.current > 10000) {
+            console.log('[StruggleNudge] Hidden (isStruggleDetected:', isStruggleDetected, ', ShowResult:', showResultUI, ', ideaSpark:', isIdeaSparkDetected, ')');
+            lastLogRef.current = now;
+        }
         return null;
     }
 
@@ -122,8 +162,8 @@ export const StruggleNudge = () => {
         <div
             style={{
                 position: 'fixed',
-                top: finalPosition.top,
-                left: finalPosition.left,
+                top: '72px',
+                right: '60px',
                 zIndex: 9999
             }}
             className="flex flex-col w-[260px] bg-gray-900 border border-gray-700 rounded-xl shadow-2xl overflow-hidden"
@@ -139,7 +179,7 @@ export const StruggleNudge = () => {
                 <button onClick={handleClose} className="text-gray-500 hover:text-white transition-colors">
                     <X size={14} />
                 </button>
-            </div>
+            </div >
 
             <div className="p-4">
                 {/* 1. Nudge UI (Initial Alert) */}
@@ -256,7 +296,7 @@ export const StruggleNudge = () => {
                     />
                 )}
             </div>
-        </div>,
+        </div >,
         document.body
     );
 };

@@ -314,6 +314,12 @@ export class MonitorAgent {
         // 2. Idea Spark (Idle >= 8.0s)
         // Trigger a nudge to offer help (On-demand)
         if (idle_time >= 10.0) {
+            // [MODIFIED] If a Writing Prompt is already pinned (user selected one), do NOT trigger Idea Spark again.
+            // The user considers Idea Spark "done" if the prompt is visible.
+            if (useStore.getState().activeWritingPrompt) {
+                return null;
+            }
+
             if (checkCooldown('IDEA_SPARK', 60)) {
                 return this.create_payload('IDEA_SPARK');
             }
