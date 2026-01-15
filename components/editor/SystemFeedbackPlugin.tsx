@@ -35,7 +35,7 @@ export default function SystemFeedbackPlugin() {
                     case 'IDEA_SPARK': strategyId = 'S1_IDEA_SPARK'; break;
                     case 'LOGIC_AUDITOR': strategyId = 'S2_LOGIC_AUDITOR'; break;
                     case 'STRUCTURAL_MAPPING': strategyId = 'S2_STRUCTURAL_MAPPING'; break;
-                    case 'THIRD_PARTY_AUDITOR': strategyId = 'S2_THIRD_PARTY_AUDITOR'; break;
+
                     case 'EVIDENCE_SUPPORT': strategyId = 'S2_EVIDENCE_SUPPORT'; break;
                     case 'TONE_REFINEMENT': strategyId = 'S1_TONE_REFINEMENT'; break;
                     case 'TIME_STUCK': strategyId = 'S1_IDEA_SPARK'; break; // Default fallback

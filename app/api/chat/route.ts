@@ -25,7 +25,7 @@ export async function POST(req: Request) {
             "suggestion_content": "The generated text content in Markdown format (e.g., using bullets, bold text). Do NOT use nested JSON objects here."
         };
 
-        if (strategy_id === 'S1_REFINEMENT' || strategy_id === 'S1_IDEA_EXPANSION' || strategy_id === 'S1_DRAFTING' || strategy_id === 'S1_PATTERN_BREAKER') {
+        if (strategy_id === 'S1_PARAPHRASING' || strategy_id === 'S1_GAP_FILLING' || strategy_id === 'S1_IDEA_EXPANSION' || strategy_id === 'S1_DRAFTING' || strategy_id === 'S1_PATTERN_BREAKER') {
             outputFormatObj = {
                 "replacement_text": "A short phrase to fill in the blank. This MUST be a grammatical fragment, NOT a full sentence. Do NOT add a period at the end."
             };

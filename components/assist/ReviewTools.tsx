@@ -20,7 +20,6 @@ export default function ReviewTools() {
         { id: 'S2_DIAGNOSIS', label: '🩺 Diagnosis (Quick Check)', desc: '글의 전반적인 상태(논리/구조/어조) 진단', color: 'yellow' },
         { id: 'S2_LOGIC_AUDITOR', label: '🔍 Logic Auditor', desc: '논리 점검 및 반론 제시' },
         { id: 'S2_STRUCTURAL_MAPPING', label: '🗺️ Structural Mapping', desc: '글 구조(목차) 시각화' },
-        { id: 'S2_THIRD_PARTY_AUDITOR', label: '👀 Third-Party Auditor', desc: '제3자(비평가) 피드백' },
         { id: 'S2_EVIDENCE_SUPPORT', label: '📚 Evidence Support', desc: '근거 자료 추천' },
         { id: 'S2_TONE_REFINEMENT', label: '🎨 Tone Refinement', desc: '어조 분석 및 정제' },
     ];
@@ -36,8 +35,8 @@ export default function ReviewTools() {
                         key={tool.id}
                         onClick={() => handleReview(tool.id, tool.label)}
                         className={`flex flex-col items-start p-3 border rounded-lg transition-colors text-left group ${tool.color === 'yellow'
-                                ? 'bg-yellow-50 border-yellow-200 hover:bg-yellow-100 hover:border-yellow-300'
-                                : 'bg-white border-gray-200 hover:bg-indigo-50 hover:border-indigo-200'
+                            ? 'bg-yellow-50 border-yellow-200 hover:bg-yellow-100 hover:border-yellow-300'
+                            : 'bg-white border-gray-200 hover:bg-indigo-50 hover:border-indigo-200'
                             }`}
                     >
                         <span className={`font-medium group-hover:text-indigo-700 ${tool.color === 'yellow' ? 'text-yellow-800' : 'text-gray-800'}`}>

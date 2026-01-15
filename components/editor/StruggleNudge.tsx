@@ -112,8 +112,11 @@ export const StruggleNudge = () => {
 
     // Return null if nothing to show
     if (!isVisible) {
+        console.log('[StruggleNudge] Hidden (isStruggleDetected:', isStruggleDetected, ', ShowResult:', showResultUI, ', ideaSpark:', isIdeaSparkDetected, ')');
         return null;
     }
+
+    console.log('[StruggleNudge] Visible at:', finalPosition);
 
     return createPortal(
         <div

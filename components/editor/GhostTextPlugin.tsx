@@ -231,6 +231,7 @@ export default function GhostTextPlugin() {
                         }
                     });
                     setGhostText(null);
+                    useStore.getState().clearHistory();
                 }
 
                 return false;

@@ -11,7 +11,6 @@ const S2_TOOLS = [
     { id: 'S2_STRUCTURAL_MAPPING', label: 'Structure', icon: LayoutList },
     { id: 'S2_TONE_REFINEMENT', label: 'Tone', icon: Palette },
     { id: 'S2_EVIDENCE_SUPPORT', label: 'Evidence', icon: BookOpen },
-    { id: 'S2_THIRD_PARTY_AUDITOR', label: 'Auditor', icon: UserCheck },
 ];
 
 export default function SelectionMenuPlugin() {
@@ -249,7 +248,7 @@ export default function SelectionMenuPlugin() {
                             e.stopPropagation(); // Prevent Lexical from catching Enter
                         }}
                         placeholder={activeToolId ? `Instructions for ${tools.find(t => t.id === activeToolId)?.label}...` : "Select a tool first..."}
-                        className={`flex-1 bg-transparent text-xs text-white placeholder-gray-500 focus:outline-none min-w-[150px] ${!activeToolId ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`flex-1 bg-transparent text-xs text-white placeholder-gray-500 focus:outline-none min-w-[120px] ${!activeToolId ? 'opacity-50 cursor-not-allowed' : ''}`}
                         disabled={!activeToolId}
                     />
                     <button

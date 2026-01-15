@@ -1,7 +1,7 @@
 import useStore from '@/store/useStore';
 import { api } from '@/src/lib/api';
 import { Sparkles, Send, MessageSquare, Search, LayoutList, UserCheck, BookOpen, Palette, Play, FileText, Wrench } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, Fragment } from 'react';
 import { selectStrategy, getStrategy } from '@/src/lib/strategy';
 import { monitorAgent } from '@/src/lib/MonitorAgent';
 import ReactMarkdown from 'react-markdown';
@@ -187,12 +187,11 @@ export default function AssistPanel() {
         { id: 'S2_STRUCTURAL_MAPPING', label: 'Structure', icon: LayoutList, desc: '구조 시각화' },
         { id: 'S2_TONE_REFINEMENT', label: 'Tone', icon: Palette, desc: '어조 정제' },
         { id: 'S2_EVIDENCE_SUPPORT', label: 'Evidence', icon: BookOpen, desc: '근거 자료' },
-        { id: 'S2_THIRD_PARTY_AUDITOR', label: 'Auditor', icon: UserCheck, desc: '제3자 피드백' },
     ];
 
     const EDITOR_STRATEGIES = [
         'S1_GAP_FILLING',
-        'S1_REFINEMENT',
+        'S1_PARAPHRASING',
         'S1_IDEA_EXPANSION',
         'S1_PATTERN_BREAKER'
     ];
@@ -200,12 +199,17 @@ export default function AssistPanel() {
     // Only select the strategy, do not trigger
     const handleToolSelect = (strategyId: any) => {
         console.log(`Tool Selected: ${strategyId}`);
-        setSelectedStrategy(strategyId);
 
-        // Link Diagnosis Button to Struggle Nudge as requested
+        // [FIX] Diagnosis is an ACTION, not a persistent mode.
+        // It triggers the StruggleNudge UI but does NOT open a chat window.
+        // It should be re-clickable immediately.
         if (strategyId === 'S2_DIAGNOSIS') {
-            setStruggleDetected(true);
+            setIdeaSparkDetected(false); // Force clear conflicting state
+            setStruggleDetected(true);   // Show Nudge UI
+            return; // Do NOT set selectedStrategy
         }
+
+        setSelectedStrategy(strategyId);
 
         // Auto-run logic removed as per user request.
         // Users must click 'Run Analysis' unless triggered by Diagnose Nudge.
@@ -222,24 +226,28 @@ export default function AssistPanel() {
                 </div>
 
                 {/* S2 Tools */}
-                {tools.map((tool) => (
-                    <button
-                        key={tool.id}
-                        onClick={() => handleToolSelect(tool.id)}
-                        className={`p-2 rounded-lg transition-colors group relative ${selectedStrategy === tool.id
-                            ? 'bg-blue-600 text-white'
-                            : tool.color === 'yellow'
-                                ? 'text-yellow-400 hover:text-yellow-100 hover:bg-yellow-900/40'
-                                : 'text-gray-400 hover:text-white hover:bg-gray-800'
-                            }`}
-                        title={tool.desc}
-                    >
-                        <tool.icon className="w-5 h-5" />
-                        {/* Tooltip */}
-                        <div className="absolute left-12 top-1/2 -translate-y-1/2 bg-gray-800 text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none z-50 border border-gray-700">
-                            {tool.label}
-                        </div>
-                    </button>
+                {/* S2 Tools */}
+                {tools.map((tool, index) => (
+                    <Fragment key={tool.id}>
+                        <button
+                            onClick={() => handleToolSelect(tool.id)}
+                            className={`p-2 rounded-lg transition-colors group relative ${selectedStrategy === tool.id
+                                ? 'bg-blue-600 text-white'
+                                : tool.color === 'yellow'
+                                    ? 'text-yellow-400 hover:text-yellow-100 hover:bg-yellow-900/40' // Enhanced Diagnosis style
+                                    : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                                }`}
+                            title={tool.desc}
+                        >
+                            <tool.icon className="w-5 h-5" />
+                            {/* Tooltip */}
+                            <div className="absolute left-12 top-1/2 -translate-y-1/2 bg-gray-800 text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none z-50 border border-gray-700">
+                                {tool.label}
+                            </div>
+                        </button>
+                        {/* Divider after Diagnosis (First item) */}
+                        {index === 0 && <div className="w-8 h-px bg-gray-800 shrink-0" />}
+                    </Fragment>
                 ))}
             </div>
 

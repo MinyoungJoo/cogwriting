@@ -34,6 +34,7 @@ const GoalHeader = () => {
     const writingPrompt = useStore(state => state.writingPrompt); // [NEW]
     const setUserGoal = useStore(state => state.setUserGoal);
     const isGoalSet = useStore(state => state.isGoalSet);
+    const content = useStore(state => state.content); // [NEW] Reactive content
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState('');
 
@@ -65,7 +66,12 @@ const GoalHeader = () => {
                     </div>
                 )}
 
-                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Current Goal</div>
+                <div className="flex items-center justify-between mb-1">
+                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Current Goal</div>
+                    <div className="text-[10px] font-medium text-gray-400">
+                        {content?.length || 0} chars
+                    </div>
+                </div>
 
                 {isEditing ? (
                     <div className="flex gap-2 items-center">

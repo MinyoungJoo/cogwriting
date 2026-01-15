@@ -166,6 +166,9 @@ export default function IdeaSparkPlugin() {
         setSuggestionOptions(null);
         setInterventionStatus('idle');
         setCoords(null);
+
+        // [FIX] Add cooldown on close to prevent immediate re-trigger
+        monitorAgent.extendCooldown('IDEA_SPARK', 60);
     };
 
     const handleQuestionClick = (question: string) => {

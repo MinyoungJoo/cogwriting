@@ -278,20 +278,25 @@ export class MonitorAgent {
         // 1. Struggle Detection (New Logic)
         // Window: Last 100 keystrokes
         // Condition: Revision Ratio < 0.6 AND Idle >= 4.0s
-        if (idle_time >= 4.0) {
+        if (idle_time >= 5.0) {
             const WINDOW_SIZE = 100;
             const recent = this.recent_keystrokes.slice(-WINDOW_SIZE);
 
             // Debug Log
             // console.log(`[Monitor] Idle: ${idle_time.toFixed(1)}s, Keystrokes: ${recent.length}/${WINDOW_SIZE}`);
 
-            if (recent.length >= WINDOW_SIZE) { // Wait until 100 data points
+            // [MODIFIED] Condition: Activate if Document Length >= 100 characters
+            if (this.current_text.length >= 100) {
                 const backspaceCount = recent.filter(k => k.type === 'BACKSPACE').length;
                 const nonCharCount = recent.filter(k => k.type === 'SPACE' || k.type === 'ENTER').length;
 
                 // Revision Ratio Calculation
-                const effectiveContribution = WINDOW_SIZE - (backspaceCount * 2) - nonCharCount;
-                const revisionRatio = (effectiveContribution + nonCharCount) / WINDOW_SIZE;
+                // Use actual sample size if less than WINDOW_SIZE to avoid division by zero or skewed results
+                const totalSample = recent.length > 0 ? recent.length : 1;
+
+                // Effective Contribution = Total - (BS * 2) - NonChar
+                const effectiveContribution = totalSample - (backspaceCount * 2) - nonCharCount;
+                const revisionRatio = (effectiveContribution + nonCharCount) / totalSample;
 
                 // console.log(`[Monitor] Revision Ratio: ${revisionRatio.toFixed(2)} (Threshold: 0.6)`);
 
@@ -308,7 +313,7 @@ export class MonitorAgent {
 
         // 2. Idea Spark (Idle >= 8.0s)
         // Trigger a nudge to offer help (On-demand)
-        if (idle_time >= 8.0) {
+        if (idle_time >= 10.0) {
             if (checkCooldown('IDEA_SPARK', 60)) {
                 return this.create_payload('IDEA_SPARK');
             }

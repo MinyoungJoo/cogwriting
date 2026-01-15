@@ -13,7 +13,7 @@ export default function MarkupTriggerPlugin() {
         return editor.registerUpdateListener(({ editorState }) => {
             editorState.read(() => {
                 // S2 Mode Check: Block S1 triggers
-                const { ghostText, systemMode } = useStore.getState();
+                const { ghostText, systemMode, clearHistory } = useStore.getState();
                 if (systemMode === 's2') return;
 
                 // Skip if ghost text is already active
@@ -48,23 +48,24 @@ export default function MarkupTriggerPlugin() {
                         offset: cursorOffset - 1 // Before ')'
                     });
 
+                    useStore.getState().clearHistory();
                     useStore.getState().setSelectedStrategy('S1_GAP_FILLING');
-                    triggerIntervention();
+                    triggerIntervention(undefined, 'S1_GAP_FILLING');
                     return;
                 }
 
-                // 2. Refinement Trigger: ( word )
+                // 2. Paraphrasing Trigger: ( word )
                 const refinementMatch = textBeforeCursor.match(/\(\s*([^)]+)\s*\)$/);
                 if (refinementMatch) {
                     const fullMatch = refinementMatch[0];
                     const word = refinementMatch[1];
                     // Ensure it's not just whitespace (handled by Gap Filling)
                     if (word.trim().length > 0) {
-                        console.log('Refinement Trigger Detected:', word);
+                        console.log('Paraphrasing Trigger Detected:', word);
 
-                        const strategy = getStrategy('S1_REFINEMENT');
-                        // Use [REFINE: word] token to keep the word visible in context
-                        const payload = monitorAgent.manual_trigger_with_replacement(`Refine: ${word}`, fullMatch.length, `[REFINE: ${word}]`);
+                        const strategy = getStrategy('S1_PARAPHRASING');
+                        // Use [PARAPHRASE: word] token to keep the word visible in context
+                        const payload = monitorAgent.manual_trigger_with_replacement(`Paraphrase: ${word}`, fullMatch.length, `[PARAPHRASE: ${word}]`);
 
                         setPendingPayload(payload);
                         setGhostTextReplacementLength(fullMatch.length);
@@ -74,8 +75,9 @@ export default function MarkupTriggerPlugin() {
                             offset: cursorOffset // After ')'
                         });
 
-                        useStore.getState().setSelectedStrategy('S1_REFINEMENT');
-                        triggerIntervention();
+                        useStore.getState().clearHistory();
+                        useStore.getState().setSelectedStrategy('S1_PARAPHRASING');
+                        triggerIntervention(undefined, 'S1_PARAPHRASING');
                         return;
                     }
                 }
@@ -100,8 +102,9 @@ export default function MarkupTriggerPlugin() {
                         offset: cursorOffset - 1 // Before '}'
                     });
 
+                    useStore.getState().clearHistory();
                     useStore.getState().setSelectedStrategy('S1_IDEA_EXPANSION');
-                    triggerIntervention();
+                    triggerIntervention(undefined, 'S1_IDEA_EXPANSION');
                     return;
                 }
 
@@ -128,6 +131,7 @@ export default function MarkupTriggerPlugin() {
                         offset: cursorOffset - sparkMatch[0].length // Start of '(!)'
                     });
 
+                    useStore.getState().clearHistory();
                     useStore.getState().setSelectedStrategy('S1_IDEA_SPARK');
                     triggerIntervention();
                     return;

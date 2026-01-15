@@ -5,14 +5,13 @@ export type CognitiveState = 'Flow' | 'Block';
 export type StrategyID =
     | 'S1_IDEA_SPARK'
     | 'S1_GAP_FILLING'
-    | 'S1_REFINEMENT'
+    | 'S1_PARAPHRASING'
     | 'S1_IDEA_EXPANSION'
     | 'S1_PATTERN_BREAKER'
     | 'S1_DRAFTING'
     | 'S2_CUSTOM_REQUEST'
     | 'S2_LOGIC_AUDITOR'
     | 'S2_STRUCTURAL_MAPPING'
-    | 'S2_THIRD_PARTY_AUDITOR'
     | 'S2_EVIDENCE_SUPPORT'
     | 'S2_TONE_REFINEMENT'
     | 'S2_DIAGNOSIS';
@@ -46,18 +45,30 @@ export function getStrategy(id: StrategyID): Strategy {
             [Context]: The user is rewriting this section repeatedly.
             [Role]: A helpful, empathetic writing assistant.
             [Action]:
-            Analyze the text and provide a very brief (1 sentence) diagnosis for EACH of the following aspects:
-            1. Logic (coherence, argument)
-            2. Structure (flow, organization)
-            3. Tone (expression, style)
+            Analyze the text based on the Writing Genre (Argumentative vs Creative).
+            Provide a very brief (1 sentence) diagnosis for EACH aspect.
+
+            [Genre-Specific Criteria]:
+            1. **Argumentative**:
+               - Logic: Strength of claims, evidence support, logical fallacies.
+               - Structure: Intro-Body-Conclusion, logical transitions.
+               - Tone: Objectivity, authority, persuasion.
+            2. **Creative**:
+               - Logic: Narrative consistency, character motivation, plot holes.
+               - Structure: Scene pacing, dramatic tension, show-dont-tell.
+               - Tone: Atmosphere, sensory details, character voice.
+
+            [Output Format]:
+            1. Logic: [Brief Diagnosis based on Genre]
+            2. Structure: [Brief Diagnosis based on Genre]
+            3. Tone: [Brief Diagnosis based on Genre]
 
             [Condition: Short or Empty Text]
-            If the provided text is very short (less than 10 words) or empty:
-            - Do NOT provide critical feedback or point out flaws.
-            - Instead, provide GENERIC, ENCOURAGING advice or a "Next Step" suggestion for each aspect.
-            - Example (Logic): "주장의 핵심을 먼저 한 문장으로 정리해보세요."
-            - Example (Structure): "서론-본론-결론의 개요를 먼저 잡아보는 건 어떨까요?"
-            - Example (Tone): "독자에게 전달하고 싶은 분위기를 먼저 정해보세요."
+            If text < 10 words:
+            - Provide GENERIC, ENCOURAGING advice.
+            - Logic: "주제나 소재를 먼저 정해보세요."
+            - Structure: "어떤 흐름으로 쓸지 상상해보세요."
+            - Tone: "독자에게 어떤 느낌을 주고 싶은지 정해보세요."
             `.trim(),
             };
         case 'S1_IDEA_SPARK':
@@ -101,46 +112,32 @@ export function getStrategy(id: StrategyID): Strategy {
                 id: 'S1_GAP_FILLING',
                 uiMessage: '✨ 빈칸 채우기 (Gap Filling)',
                 systemInstruction: `
-          [Goal]: Improve coherence and flow based on the genre.
-          [Action]: The user has left a gap marked by ( ). Suggest a suitable connecting word, phrase, or sentence to bridge the context before and after the gap.
-          [Genre-Specific Guidance]:
-          - IF Creative: Focus on narrative flow, sensory transitions, or emotional continuity.
-          - IF Argumentative: Focus on logical connectors (e.g., "furthermore", "conversely") and ensuring the evidence supports the claim.
-          [Output]: Output ONLY the suggested text. Do NOT include parentheses around the text.
+          [Goal]: seamless gap filling.
+          [Action]: The user has left a gap. Analyze the text BEFORE and AFTER the gap to generate a connecting phrase/sentence.
+          [CRITICAL RULES]:
+          1. **Tone Matching**: STRICTLY analyze and match the ending styles (speech level) of the surrounding sentences (e.g., ~다, ~요, ~습니다). Do NOT mix styles.
+          2. **Logical Flow**: The suggestion must logically bridge the previous thought to the following thought. It must not contradict the user's argument or introduce a sudden topic shift.
+          [Genre Guidance]:
+          - Creative: Focus on emotional continuity or action sequence.
+          - Argumentative: Focus on logical connectors (However, Therefore) or strengthening the link between claim and evidence.
+          [Output]: Output ONLY the text to fill the gap. No explanations.
           [Language]: Respond in Korean.
         `.trim()
             };
-        case 'S1_REFINEMENT':
+        case 'S1_PARAPHRASING':
             return {
-                id: 'S1_REFINEMENT',
-                uiMessage: '✨ 표현 다듬기 (Refinement)',
+                id: 'S1_PARAPHRASING',
+                uiMessage: '🔄 문장 바꾸기 (Paraphrasing)',
                 systemInstruction: `
-          [Goal]: Enhance the impact of the word/phrase in ( ).
-          [Action]: The user provided a word/phrase in ( ). Replace abstract terms with specific descriptions.
+          [Goal]: Paraphrase the selected text to improve clarity, flow, or impact.
+          [Action]: The user has selected a sentence or phrase. Rewrite it using different vocabulary and structure while preserving the original meaning.
           [Genre-Specific Guidance]:
-          - IF Creative: Follow "Show, Don't Tell". Replace abstract emotions with sensory details (sight, sound, touch). 
-            Input: 슬펐다
-             Output: 목이 메어 아무 말도 할 수 없었다
-          - IF Argumentative: Focus on "Clarity and Authority". Replace weak or informal words with precise, academic, or professional alternatives.
-            Input: 나쁘다
-             Output: 부작용을 초래할 가능성이 크다
-
-          [Output Rules]:
-          1. Output ONLY the refined text. Do NOT enclose it in parentheses.
-          2. Do NOT repeat the original input word.
-          3. Do NOT use "->" or any explanation.
-          4. [CRITICAL] Contextual Fit (Fill-in-the-blank):
-             - Look at the 'Writing Context' and the [REFINE: word] token.
-             - The [REFINE: word] token marks the spot. Use the 'word' inside it as your target to refine.
-             - The output MUST be a grammatical FRAGMENT that fits exactly into that spot.
-             - Do NOT create a full sentence. Do NOT add a period unless the context requires it.
-             - Match the Part of Speech:
-               * If [REFINE: adjective], output an Adjective phrase (e.g., "가슴이 미어지는").
-               * If [REFINE: verb], output a Verb phrase (e.g., "가슴이 미어지는 듯했다").
-             - If the context is "그는 [REFINE: 슬펐다] ", output "가슴이 미어지는 듯했다" (Verb fit).
-             - If the context is "그는 [REFINE: 슬픈] 눈으로", output "가슴이 미어지는" (Adjective fit).
-
-          [Context Usage]: Use 'Writing Context' to ensure the refined phrase connects naturally with the surrounding words. Do NOT output the context itself.
+          - IF Creative: Make it more vivid, emotional, or immersive.
+          - IF Argumentative: Make it more concise, persuasive, or authoritative.
+          [Output rules]:
+          1. Output ONLY the paraphrased text.
+          2. Do NOT add extra explanations.
+          3. Ensure the rewritten version fits grammatically into the surrounding context if it's a partial selection.
           [Language]: Respond in Korean.
         `.trim()
             };
@@ -202,12 +199,19 @@ export function getStrategy(id: StrategyID): Strategy {
         case 'S2_LOGIC_AUDITOR':
             return {
                 id: 'S2_LOGIC_AUDITOR',
-                uiMessage: '🔍 논리 점검 (Logic Auditor)',
+                uiMessage: '🔍 논리 & 제3자 검토 (Logic & Audit)',
                 systemInstruction: `
-          [Goal]: Audit logic and identify bias.
-          [Action]: Analyze the provided text for logical fallacies, contradictions, or weak arguments. Identify missing counter-arguments.
-          [Output]: Provide a bulleted list of logical issues and suggestions for improvement.
-          [Language]: Respond in Korean.
+          [Goal]: Audit logic and provide objective third-party feedback.
+          [Role]: You are a critical reviewer and editor.
+          [Action]:
+          1. Analyze the text for logical fallacies, contradictions, or weak arguments.
+          2. Evaluate clarity, flow, and audience awareness. Point out parts that are confusing, boring, or lack connection.
+          3. Identify missing counter-arguments or potential biases.
+          [Output]: Provide a structured review using Markdown bullets:
+          - **논리적 오류 & 개선 (Logical Fallacies & Fix)**: Identify the error and provide a corrected argument example.
+          - **명확성 및 가독성 (Clarity & Flow)**: Point out confusing parts and **provide a rewritten sentence** for better clarity. (e.g., "Change A to B")
+          - **개선 제안 (Suggestions)**: Actionable advice.
+          [Constraint]: When pointing out a problem, ALWAYS provide a specific **"Rewritten Example" (수정 예시)** so the user knows exactly how to fix it.
         `.trim()
             };
         case 'S2_STRUCTURAL_MAPPING':
@@ -215,20 +219,25 @@ export function getStrategy(id: StrategyID): Strategy {
                 id: 'S2_STRUCTURAL_MAPPING',
                 uiMessage: '🗺️ 구조 매핑 (Structural Mapping)',
                 systemInstruction: `
-          [Goal]: Visualize the structure of the text.
-          [Action]: Analyze the provided text and generate a hierarchical outline (Table of Contents). Identify the Thesis Statement and main supporting points.
-          [Output]: Provide a clear, indented outline using Markdown bullets (- or *). Do NOT use JSON for the content.
-          [Language]: Respond in Korean.
-        `.trim()
-            };
-        case 'S2_THIRD_PARTY_AUDITOR':
-            return {
-                id: 'S2_THIRD_PARTY_AUDITOR',
-                uiMessage: '👀 제3자 검토 (Third-Party Auditor)',
-                systemInstruction: `
-          [Goal]: Provide objective feedback from a third-party perspective.
-          [Action]: Act as a critical reader or editor. Evaluate the text for clarity, engagement, and audience awareness. Point out parts that might be confusing or boring.
-          [Output]: Provide constructive feedback as if you were a reviewer. Use Markdown for formatting.
+          [Goal]: Visualize the structure of the *currently written* text.
+          [CRITICAL CONSTRAINT]: Analyze ONLY the provided text. Do NOT invent, predict, or add sections that the user has not written yet.
+          [Action]:
+          1. Identify the actual structure (Paragraphs, Sections) present in the text.
+          2. Extract the main point or topic of each existing paragraph.
+          3. If the text is incomplete (e.g., only an intro), map ONLY that part.
+          
+          [Genre-Specific Analysis]:
+          - IF Argumentative: Focus on logical flow (Introduction -> Argument -> Evidence).
+          - IF Creative: Focus on **Narrative Flow & Consistency**.
+            * Check if scene transitions are smooth.
+            * Check for **Logical Gaps** in the plot (e.g., teleporting characters, unexplained events).
+            * Check for **Character Consistency** (actions matching personality).
+
+          [Output]:
+          - Use a hierarchical list (Markdown bullets).
+          - (Creative) **서사 흐름 (Narrative Flow)**: [Scene 1] -> [Scene 2] ...
+          - (Creative) **개연성 점검 (Consistency Check)**: Point out any gaps if found.
+          - (Optional) **제안 (Suggestion)**: ...
           [Language]: Respond in Korean.
         `.trim()
             };

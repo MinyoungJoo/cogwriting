@@ -68,6 +68,7 @@ interface AppState {
     setGhostText: (text: string | null) => void;
     addToHistory: (text: string) => void;
     navigateHistory: (direction: -1 | 1) => void;
+    clearHistory: () => void;
     setGhostTextReplacementLength: (len: number) => void;
     setGhostTextPosition: (pos: { key: string; offset: number } | null) => void;
     setMetrics: (metrics: { docLength: number; pauseDuration: number; cursorPos: number; editRatio: number; revisionRatio: number }) => void;
@@ -374,6 +375,7 @@ const useStore = create<AppState>()(persist((set, get) => ({
         }
         return {};
     }),
+    clearHistory: () => set({ suggestionHistory: [], suggestionIndex: -1 }),
     setGhostTextReplacementLength: (len) => set({ ghostTextReplacementLength: len }),
     setGhostTextPosition: (pos) => set({ ghostTextPosition: pos }),
     setMetrics: (metrics) => set(metrics),
@@ -449,7 +451,6 @@ const useStore = create<AppState>()(persist((set, get) => ({
                     case 'IDEA_SPARK_PREFETCH': strategyIdToUse = 'S1_IDEA_SPARK'; break;
                     case 'LOGIC_AUDITOR': strategyIdToUse = 'S2_LOGIC_AUDITOR'; break;
                     case 'STRUCTURAL_MAPPING': strategyIdToUse = 'S2_STRUCTURAL_MAPPING'; break;
-                    case 'THIRD_PARTY_AUDITOR': strategyIdToUse = 'S2_THIRD_PARTY_AUDITOR'; break;
                     case 'EVIDENCE_SUPPORT': strategyIdToUse = 'S2_EVIDENCE_SUPPORT'; break;
                     case 'TONE_REFINEMENT': strategyIdToUse = 'S2_TONE_REFINEMENT'; break;
                     case 'STRUGGLE_DETECTION': strategyIdToUse = 'S2_DIAGNOSIS'; break;
@@ -475,7 +476,17 @@ const useStore = create<AppState>()(persist((set, get) => ({
             return;
         }
 
-        set({ interventionStatus: 'requesting' });
+        console.log(`[TriggerIntervention] ID: ${strategyIdToUse}, Instruction Present: ${!!strategy.systemInstruction}`);
+
+        if (!strategy.systemInstruction) {
+            console.error('[Critical Error] System Instruction is NULL for strategy:', strategyIdToUse);
+        }
+
+        // [FIX] Update selectedStrategy so the UI knows what is running
+        set({
+            interventionStatus: 'requesting',
+            selectedStrategy: strategyIdToUse
+        });
 
         // Construct Payload
         let payload: any = get().pendingPayload || {};
@@ -627,14 +638,15 @@ const useStore = create<AppState>()(persist((set, get) => ({
                 }, strategy.id);
 
                 // S1 Ghost Text / Markup Strategies Robust Handling
-                if (['S1_REFINEMENT', 'S1_GAP_FILLING', 'S1_IDEA_EXPANSION', 'S1_PATTERN_BREAKER', 'S1_DRAFTING'].includes(strategy.id)) {
+                if (['S1_PARAPHRASING', 'S1_GAP_FILLING', 'S1_IDEA_EXPANSION', 'S1_PATTERN_BREAKER', 'S1_DRAFTING'].includes(strategy.id)) {
                     let replacement = data.replacement_text;
                     if (!replacement && typeof content === 'string') {
                         // Fallback: Use content but strip quotes or markdown or parentheses if needed
                         replacement = content.replace(/^["'(\[]|["')\]]$/g, '').trim();
                     }
                     if (replacement) {
-                        set({ ghostText: replacement });
+                        // set({ ghostText: replacement });
+                        get().addToHistory(replacement);
                     }
                 }
 
