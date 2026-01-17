@@ -190,15 +190,19 @@ export default function IdeaSparkPlugin() {
         return null;
     }
 
+    // Fixed Positioning (Left of Chat Window)
+    // Chat window is 400px wide. We place this 420px from right.
+    const FIXED_STYLE: React.CSSProperties = {
+        position: 'fixed',
+        top: '80px',
+        right: '420px',
+        zIndex: 50
+    };
+
     return createPortal(
         <div
             ref={menuRef}
-            style={{
-                position: 'fixed',
-                top: finalCoords.y,
-                left: finalCoords.x,
-                zIndex: 50
-            }}
+            style={FIXED_STYLE}
             className="flex flex-col w-[260px] bg-gray-900 border border-gray-700 rounded-lg shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-2 duration-300"
         >
             {/* Header */}

@@ -161,8 +161,8 @@ export default function SessionList({ onSelectSession }: SessionListProps) {
                                 <button
                                     onClick={() => setCurrentPage(pageNum)}
                                     className={`px-3 py-1 text-xs font-medium border rounded transition-colors ${currentPage === pageNum
-                                            ? 'bg-blue-600 border-blue-500 text-white'
-                                            : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                                        ? 'bg-blue-600 border-blue-500 text-white'
+                                        : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
                                         }`}
                                 >
                                     {pageNum}

@@ -85,12 +85,20 @@ export function KeystrokeMonitorPlugin() {
 
 export function TextChangePlugin() {
     const [editor] = useLexicalComposerContext();
-    const setContent = useStore((state) => state.setContent);
+    const { setContent, ghostText } = useStore(); // [FIX] Get ghostText to exclude it
 
     useEffect(() => {
         return editor.registerUpdateListener(({ editorState }) => {
             editorState.read(() => {
-                const textContent = editor.getRootElement()?.innerText || '';
+                let textContent = editor.getRootElement()?.innerText || '';
+
+                // [FIX] Strip Ghost Text from content if present
+                // This prevents the AI from reading its own unaccepted suggestion as part of the context
+                if (ghostText && textContent.includes(ghostText)) {
+                    // We only remove the last occurrence or use a more specific logic if needed
+                    // For now, simple replacement is effective as Ghost Text is usually unique and transient
+                    textContent = textContent.replace(ghostText, '');
+                }
 
                 // 1. Update Store
                 setContent(textContent);
@@ -106,7 +114,7 @@ export function TextChangePlugin() {
                 }
             });
         });
-    }, [editor, setContent]);
+    }, [editor, setContent, ghostText]);
 
     return null;
 }

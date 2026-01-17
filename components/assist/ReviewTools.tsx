@@ -20,7 +20,7 @@ export default function ReviewTools() {
         { id: 'S2_DIAGNOSIS', label: '🩺 Diagnosis (Quick Check)', desc: '글의 전반적인 상태(논리/구조/어조) 진단', color: 'yellow' },
         { id: 'S2_LOGIC_AUDITOR', label: '🔍 Logic Auditor', desc: '논리 점검 및 반론 제시' },
         { id: 'S2_STRUCTURAL_MAPPING', label: '🗺️ Structural Mapping', desc: '글 구조(목차) 시각화' },
-        { id: 'S2_EVIDENCE_SUPPORT', label: '📚 Evidence Support', desc: '근거 자료 추천' },
+
         { id: 'S2_TONE_REFINEMENT', label: '🎨 Tone Refinement', desc: '어조 분석 및 정제' },
     ];
 

@@ -1,5 +1,5 @@
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { $getSelection, $isRangeSelection, SELECTION_CHANGE_COMMAND } from 'lexical';
+import { $getSelection, $isRangeSelection, SELECTION_CHANGE_COMMAND, $getRoot } from 'lexical';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import useStore from '@/store/useStore';
@@ -10,7 +10,7 @@ const S2_TOOLS = [
     { id: 'S2_LOGIC_AUDITOR', label: 'Logic', icon: Search },
     { id: 'S2_STRUCTURAL_MAPPING', label: 'Structure', icon: LayoutList },
     { id: 'S2_TONE_REFINEMENT', label: 'Tone', icon: Palette },
-    { id: 'S2_EVIDENCE_SUPPORT', label: 'Evidence', icon: BookOpen },
+
 ];
 
 export default function SelectionMenuPlugin() {
@@ -48,13 +48,50 @@ export default function SelectionMenuPlugin() {
             content: chatMessageContent
         }, strategy);
 
+        // [NEW] Persist User Request to DB for Context Continuity
+        // This ensures "Drag & Ask" history is remembered by the AI.
+        const sessionId = useStore.getState().sessionId;
+        const participantId = useStore.getState().participantId;
+
+        if (sessionId) {
+            import('@/src/lib/api').then(({ api }) => {
+                api.logs.saveChatLog({
+                    session_id: sessionId,
+                    participant_id: participantId || 'anonymous',
+                    strategy_id: strategy,
+                    messages: [{
+                        role: 'user',
+                        content: chatMessageContent,
+                        timestamp: new Date()
+                    }]
+                }).catch(e => console.error('[SelectionMenu] Failed to save log', e));
+            });
+        }
+
         const payload = monitorAgent.manual_trigger(prompt);
-        payload.writing_context = selectedText;
+        // [MODIFIED] Send BOTH selection and full context.
+        // We do NOT overwrite writing_context with just selection here anymore.
+        // Instead, we pass explicit context_data helpers.
+
+        // We get full text from editor
+        let fullText = '';
+        editor.getEditorState().read(() => {
+            fullText = editor.getEditorState().read(() => $getRoot().getTextContent());
+        });
+
+        // Pass structured context data to triggerIntervention logic
+        const contextOverride = {
+            writing_context: selectedText, // Legacy: Primary prompt input is the selection
+            context_data: {
+                fullText: fullText,   // User Request: Needs full context
+                focalSegment: selectedText // Explicit focus
+            }
+        };
 
         setPendingPayload(payload);
 
         // 3. Trigger
-        triggerIntervention();
+        triggerIntervention(contextOverride, strategy as any);
 
         // 4. Cleanup
         setCoords(null);

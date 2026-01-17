@@ -284,42 +284,52 @@ export default function LogViewer({ sessionId, onBack }: LogViewerProps) {
 
                         {/* Chat Content */}
                         <div className="flex-1 overflow-y-auto p-4 bg-gray-950 space-y-6">
-                            {chatLogs.length === 0 ? (
-                                <div className="text-center text-gray-500 mt-10">No chat history found.</div>
-                            ) : (
-                                chatLogs
-                                    .filter(log => filterStrategy === 'ALL' || (log.strategy_id || 'GENERAL') === filterStrategy)
-                                    .map((log) => (
-                                        <div key={log._id} className="border border-gray-800 rounded-lg p-4 bg-gray-900/30">
-                                            <div className="flex items-center justify-between border-b border-gray-800 pb-2 mb-2">
-                                                <div className="text-xs text-gray-500 font-mono">
-                                                    {new Date(log.createdAt).toLocaleString()}
-                                                </div>
-                                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-800 text-gray-400 border border-gray-700">
-                                                    {log.strategy_id || 'GENERAL'}
-                                                </span>
-                                            </div>
-                                            <div className="space-y-3">
-                                                {log.messages.map((msg, idx) => (
-                                                    <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                                        <div className={`max-w-[80%] rounded-lg p-3 text-sm leading-relaxed ${msg.role === 'user'
-                                                            ? 'bg-blue-900/30 text-blue-100 border border-blue-900/50'
-                                                            : msg.role === 'assistant'
-                                                                ? 'bg-gray-800 text-gray-200 border border-gray-700'
-                                                                : 'bg-red-900/20 text-red-300 text-xs italic'
-                                                            }`}>
-                                                            <div className="font-bold text-[10px] mb-1 opacity-50 uppercase">{msg.role}</div>
-                                                            {msg.content}
-                                                        </div>
+                            {(() => {
+                                const filteredLogs = chatLogs.filter(log => filterStrategy === 'ALL' || (log.strategy_id || 'GENERAL') === filterStrategy);
+
+                                if (filteredLogs.length === 0) {
+                                    return <div className="text-center text-gray-500 mt-10">No chat history found for this filter.</div>;
+                                }
+
+                                // Flatten and Sort Messages
+                                const allMessages = filteredLogs.flatMap(log =>
+                                    log.messages.map(msg => ({
+                                        ...msg,
+                                        strategy_id: log.strategy_id || 'GENERAL',
+                                        original_created: log.createdAt // Fallback if msg timestamp missing
+                                    }))
+                                ).sort((a, b) => new Date(a.timestamp || a.original_created).getTime() - new Date(b.timestamp || b.original_created).getTime());
+
+                                return (
+                                    <div className="space-y-4">
+                                        {allMessages.map((msg, idx) => (
+                                            <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                                <div className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} max-w-[80%]`}>
+                                                    <div className="flex items-center gap-2 mb-1 px-1">
+                                                        <span className="text-[10px] text-gray-500 font-mono">
+                                                            {new Date(msg.timestamp || msg.original_created).toLocaleTimeString()}
+                                                        </span>
+                                                        {filterStrategy === 'ALL' && (
+                                                            <span className="text-[10px] font-bold text-gray-600 bg-gray-900 px-1 rounded">
+                                                                {msg.strategy_id}
+                                                            </span>
+                                                        )}
                                                     </div>
-                                                ))}
+                                                    <div className={`rounded-lg p-3 text-sm leading-relaxed ${msg.role === 'user'
+                                                        ? 'bg-blue-900/30 text-blue-100 border border-blue-900/50 rounded-tr-none'
+                                                        : msg.role === 'assistant'
+                                                            ? 'bg-gray-800 text-gray-200 border border-gray-700 rounded-tl-none'
+                                                            : 'bg-red-900/20 text-red-300 text-xs italic'
+                                                        }`}>
+                                                        <div className="font-bold text-[10px] mb-1 opacity-50 uppercase">{msg.role}</div>
+                                                        <div className="whitespace-pre-wrap">{msg.content}</div>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))
-                            )}
-                            {chatLogs.filter(log => filterStrategy === 'ALL' || (log.strategy_id || 'GENERAL') === filterStrategy).length === 0 && (
-                                <div className="text-center text-gray-500 mt-10">No logs for this strategy.</div>
-                            )}
+                                        ))}
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
                 )}

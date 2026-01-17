@@ -277,7 +277,14 @@ const useStore = create<AppState>()(persist((set, get) => ({
             const strategiesToTrigger: { id: StrategyID, text: string, name: string }[] = [];
 
             // Map selections to strategies
-            for (const type of types) {
+            // [MODIFIED] Enforce Priority Order: Logic > Structure > Tone
+            const PRIORITY_ORDER = ['logic', 'structure', 'tone'];
+
+            console.log('[Store] Formatting Selection. Input Types:', types);
+
+            for (const type of PRIORITY_ORDER) {
+                if (!types.includes(type)) continue;
+
                 if (type === 'logic') {
                     strategiesToTrigger.push({
                         id: 'S2_LOGIC_AUDITOR',
@@ -318,7 +325,12 @@ const useStore = create<AppState>()(persist((set, get) => ({
             set({
                 selectedStrategy: primaryStrategy.id,
                 isStruggleDetected: false,
-                struggleDiagnosis: null
+                struggleDiagnosis: null,
+                // [NEW] Mark these as "Unread" so the UI sparkles
+                unreadDiagnosis: strategiesToTrigger.reduce((acc, curr) => ({
+                    ...acc,
+                    [curr.id]: true
+                }), get().unreadDiagnosis)
             });
 
             // 3. Trigger Analysis for ALL selected tools (Parallel)
@@ -456,7 +468,7 @@ const useStore = create<AppState>()(persist((set, get) => ({
                     case 'IDEA_SPARK_PREFETCH': strategyIdToUse = 'S1_IDEA_SPARK'; break;
                     case 'LOGIC_AUDITOR': strategyIdToUse = 'S2_LOGIC_AUDITOR'; break;
                     case 'STRUCTURAL_MAPPING': strategyIdToUse = 'S2_STRUCTURAL_MAPPING'; break;
-                    case 'EVIDENCE_SUPPORT': strategyIdToUse = 'S2_EVIDENCE_SUPPORT'; break;
+
                     case 'TONE_REFINEMENT': strategyIdToUse = 'S2_TONE_REFINEMENT'; break;
                     case 'STRUGGLE_DETECTION': strategyIdToUse = 'S2_DIAGNOSIS'; break;
                 }
@@ -641,6 +653,22 @@ const useStore = create<AppState>()(persist((set, get) => ({
                     content: content,
                     strategy: strategy.id
                 }, strategy.id);
+
+                // [NEW] Persist AI Message to DB (for triggers outside AssistPanel like SelectionMenu/Nudges)
+                const sessionId = get().sessionId;
+                const participantId = get().participantId;
+                if (sessionId) {
+                    api.logs.saveChatLog({
+                        session_id: sessionId,
+                        participant_id: participantId || 'anonymous',
+                        strategy_id: strategy.id,
+                        messages: [{
+                            role: 'assistant',
+                            content: content,
+                            timestamp: new Date()
+                        }]
+                    }).catch(e => console.error('[Store] Failed to save AI chat log', e));
+                }
 
                 // S1 Ghost Text / Markup Strategies Robust Handling
                 if (['S1_PARAPHRASING', 'S1_GAP_FILLING', 'S1_IDEA_EXPANSION', 'S1_PATTERN_BREAKER', 'S1_DRAFTING'].includes(strategy.id)) {

@@ -20,7 +20,9 @@ export default function AssistPanel() {
         setSelectedStrategy,
         setPendingPayload,
         setStruggleDetected, // Import setStruggleDetected
-        setIdeaSparkDetected // [FIX] Import setIdeaSparkDetected
+        setIdeaSparkDetected, // [FIX] Import setIdeaSparkDetected
+        unreadDiagnosis, // [NEW] Import unreadDiagnosis
+        markDiagnosisRead // [NEW] Import markDiagnosisRead
     } = useStore();
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -53,6 +55,7 @@ export default function AssistPanel() {
         setIsLoading(true);
 
         // Save User Message to DB
+        console.log('[AssistPanel] Saving Chat Log for Session:', sessionId);
         if (sessionId) {
             try {
                 await api.logs.saveChatLog({
@@ -88,7 +91,8 @@ export default function AssistPanel() {
                     userGoal: useStore.getState().userGoal,
                     writingGenre: useStore.getState().writingGenre,
                     writingTopic: useStore.getState().writingTopic,
-                    writingAudience: useStore.getState().writingAudience
+                    writingAudience: useStore.getState().writingAudience,
+                    sessionId: sessionId // [NEW] Pass Session ID for Context Hydration
                 }
             };
 
@@ -152,8 +156,7 @@ export default function AssistPanel() {
     };
 
     // Only select the strategy, do not trigger
-    const unreadDiagnosis = useStore((state) => state.unreadDiagnosis);
-    const markDiagnosisRead = useStore((state) => state.markDiagnosisRead);
+
 
     useEffect(() => {
         if (selectedStrategy && unreadDiagnosis[selectedStrategy]) {
@@ -182,11 +185,12 @@ export default function AssistPanel() {
     };
 
     const tools = [
+        { id: 'S1_IDEA_SPARK', label: 'Idea Spark', icon: Sparkles, desc: '아이디어 발상', color: 'yellow' },
         { id: 'S2_DIAGNOSIS', label: 'Diagnosis', icon: FileText, desc: '진단', color: 'yellow' },
         { id: 'S2_LOGIC_AUDITOR', label: 'Logic', icon: Search, desc: '논리 점검' },
         { id: 'S2_STRUCTURAL_MAPPING', label: 'Structure', icon: LayoutList, desc: '구조 시각화' },
         { id: 'S2_TONE_REFINEMENT', label: 'Tone', icon: Palette, desc: '어조 정제' },
-        { id: 'S2_EVIDENCE_SUPPORT', label: 'Evidence', icon: BookOpen, desc: '근거 자료' },
+
     ];
 
     const EDITOR_STRATEGIES = [
@@ -207,6 +211,21 @@ export default function AssistPanel() {
             setIdeaSparkDetected(false); // Force clear conflicting state
             setStruggleDetected(true);   // Show Nudge UI
             return; // Do NOT set selectedStrategy
+        }
+
+        // [NEW] Idea Spark Manual Trigger (Icon Click)
+        if (strategyId === 'S1_IDEA_SPARK') {
+            setStruggleDetected(false); // Force clear conflicting state
+            // Reset cooldown to allow immediate trigger
+            monitorAgent.resetCooldown('IDEA_SPARK');
+            setIdeaSparkDetected(true); // Show Idea Spark UI
+
+            const payload = monitorAgent.manual_trigger('Help me find ideas');
+            setPendingPayload(payload);
+
+            // Allow UI to position itself (defaulting to center/top if no cursor logic here yet)
+            triggerIntervention(undefined, 'S1_IDEA_SPARK');
+            return;
         }
 
         setSelectedStrategy(strategyId);
@@ -240,13 +259,22 @@ export default function AssistPanel() {
                             title={tool.desc}
                         >
                             <tool.icon className="w-5 h-5" />
+
+                            {/* Unread Indicator (Sparkle) */}
+                            {unreadDiagnosis[tool.id] && selectedStrategy !== tool.id && (
+                                <span className="absolute top-1 right-1 flex h-2.5 w-2.5">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-yellow-500"></span>
+                                </span>
+                            )}
+
                             {/* Tooltip */}
                             <div className="absolute left-12 top-1/2 -translate-y-1/2 bg-gray-800 text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none z-50 border border-gray-700">
                                 {tool.label}
                             </div>
                         </button>
-                        {/* Divider after Diagnosis (First item) */}
-                        {index === 0 && <div className="w-8 h-px bg-gray-800 shrink-0" />}
+                        {/* Divider after Diagnosis (Second item) */}
+                        {index === 1 && <div className="w-8 h-px bg-gray-800 shrink-0" />}
                     </Fragment>
                 ))}
             </div>
@@ -287,11 +315,7 @@ export default function AssistPanel() {
                             onAnimationEnd={() => useStore.getState().markDiagnosisRead(selectedStrategy)}
                         >
                             {/* Sparkle Overlay for Unread */}
-                            {useStore.getState().unreadDiagnosis[selectedStrategy] && (
-                                <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-50">
-                                    <Sparkles className="w-16 h-16 text-yellow-400 animate-ping opacity-75" />
-                                </div>
-                            )}
+
 
                             {currentMessages.map((msg, idx) => (
                                 <div key={idx} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>

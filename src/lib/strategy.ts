@@ -12,7 +12,7 @@ export type StrategyID =
     | 'S2_CUSTOM_REQUEST'
     | 'S2_LOGIC_AUDITOR'
     | 'S2_STRUCTURAL_MAPPING'
-    | 'S2_EVIDENCE_SUPPORT'
+
     | 'S2_TONE_REFINEMENT'
     | 'S2_DIAGNOSIS';
 
@@ -110,18 +110,27 @@ export function getStrategy(id: StrategyID): Strategy {
         case 'S1_GAP_FILLING':
             return {
                 id: 'S1_GAP_FILLING',
-                uiMessage: '✨ 빈칸 채우기 (Gap Filling)',
+                uiMessage: '✨ 흐름 잇기 (Gap Filling)', // Changed name slightly to imply Flow
                 systemInstruction: `
-          [Goal]: seamless gap filling.
-          [Action]: The user has left a gap. Analyze the text BEFORE and AFTER the gap to generate a connecting phrase/sentence.
+          [Goal]: Generate a seamless, content-rich bridge between two fragmented thoughts.
+          [Action]: Analyze the logical and emotional relationship between the text BEFORE and AFTER the gap.
+          [Relationships to Detect]:
+          - **Contrast**: Did the previous part say X, and the next say Y? (Usage: "While X is true, Y...")
+          - **Causality**: Is the next part a result? (Usage: "Because of this...", "This leads to...")
+          - **Elaboration**: Is the next part detail? (Usage: "Specifically...", "To illustrate...")
           [CRITICAL RULES]:
-          1. **Tone Matching**: STRICTLY analyze and match the ending styles (speech level) of the surrounding sentences (e.g., ~다, ~요, ~습니다). Do NOT mix styles.
-          2. **Logical Flow**: The suggestion must logically bridge the previous thought to the following thought. It must not contradict the user's argument or introduce a sudden topic shift.
+          1. **Avoid Empty Connectors**: Do NOT just output "Therefore," "However," or "And." Generate a *substantive* phrase that references the actual content (e.g., instead of "But,", use "Despite this clear evidence,").
+          2. **Tone & Rhythm**: Match the user's sentence length and ending style (speech level) exactly.
+          3. **Contextual Continuity**: The bridge must make the transition invisible.
           [Genre Guidance]:
-          - Creative: Focus on emotional continuity or action sequence.
-          - Argumentative: Focus on logical connectors (However, Therefore) or strengthening the link between claim and evidence.
-          [Output]: Output ONLY the text to fill the gap. No explanations.
+          - **Creative**: Focus on sensory details, action bridging, or internal monologue that connects the two scenes/feelings.
+          - **Argumentative**: Focus on the *logical leap*. Summarize the previous point briefly to launch the next point.
+          [Output]: Output ONLY the text to fill the gap. No quotes, no explanations.
           [Language]: Respond in Korean.
+          [Style Constraint]: MIMIC the user's writing style.
+          - If the user writes formally ("~니다"), use formal endings.
+          - If the user writes casually ("~헤"), use casual endings.
+          - Match the vocabulary level and sentence complexity.
         `.trim()
             };
         case 'S1_PARAPHRASING':
@@ -157,6 +166,10 @@ export function getStrategy(id: StrategyID): Strategy {
           2. Do NOT include the surrounding context.
           3. Do NOT repeat the seed phrase verbatim if possible, but develop it.
           [Language]: Respond in Korean.
+          [Style Constraint]: MIMIC the user's writing style.
+          - If the user writes formally ("~니다"), use formal endings.
+          - If the user writes casually ("~헤"), use casual endings.
+          - Match the vocabulary level and sentence complexity.
         `.trim()
             };
         case 'S1_PATTERN_BREAKER':
@@ -183,6 +196,10 @@ export function getStrategy(id: StrategyID): Strategy {
           - Question: "What if the protagonist was a child?"
           - Output: "If I were a child looking at this,"
           [Language]: Respond in Korean.
+          [Style Constraint]: MIMIC the user's writing style.
+          - If the user writes formally ("~니다"), use formal endings.
+          - If the user writes casually ("~헤"), use casual endings.
+          - Match the vocabulary level and sentence complexity.
         `.trim()
             };
         case 'S2_CUSTOM_REQUEST':
@@ -201,17 +218,27 @@ export function getStrategy(id: StrategyID): Strategy {
                 id: 'S2_LOGIC_AUDITOR',
                 uiMessage: '🔍 논리 & 제3자 검토 (Logic & Audit)',
                 systemInstruction: `
-          [Goal]: Audit logic and provide objective third-party feedback.
-          [Role]: You are a critical reviewer and editor.
+          [Goal]: Targeted logic/consistency audit (Concise).
+          [Role]: Critical Editor.
           [Action]:
-          1. Analyze the text for logical fallacies, contradictions, or weak arguments.
-          2. Evaluate clarity, flow, and audience awareness. Point out parts that are confusing, boring, or lack connection.
-          3. Identify missing counter-arguments or potential biases.
-          [Output]: Provide a structured review using Markdown bullets:
-          - **논리적 오류 & 개선 (Logical Fallacies & Fix)**: Identify the error and provide a corrected argument example.
-          - **명확성 및 가독성 (Clarity & Flow)**: Point out confusing parts and **provide a rewritten sentence** for better clarity. (e.g., "Change A to B")
-          - **개선 제안 (Suggestions)**: Actionable advice.
-          [Constraint]: When pointing out a problem, ALWAYS provide a specific **"Rewritten Example" (수정 예시)** so the user knows exactly how to fix it.
+          - (Argumentative): Find *one* key logical fallacy or weak evidence.
+          - (Creative): Find *one* key consistency error or plot hole.
+
+          [Output Format]: Concise Markdown.
+
+          ### 🔍 핵심 진단 & 수정 예시
+          - **피드백**: Briefly state the main problem.
+          - **수정 예시**: Provide a **Rewritten Example** immediately.
+     
+          - "기존 문장: ...".
+
+            "수정 문장: ..."
+
+          ### 🤔심화 질문 
+          - Ask ONE provocative question to challenge the user's depth.
+
+          [Constraint]: Be extremely concise. Focus on the most critical issue only.
+          [Language]: Respond in Korean.
         `.trim()
             };
         case 'S2_STRUCTURAL_MAPPING':
@@ -219,47 +246,60 @@ export function getStrategy(id: StrategyID): Strategy {
                 id: 'S2_STRUCTURAL_MAPPING',
                 uiMessage: '🗺️ 구조 매핑 (Structural Mapping)',
                 systemInstruction: `
-          [Goal]: Visualize the structure of the *currently written* text.
-          [CRITICAL CONSTRAINT]: Analyze ONLY the provided text. Do NOT invent, predict, or add sections that the user has not written yet.
-          [Action]:
-          1. Identify the actual structure (Paragraphs, Sections) present in the text.
-          2. Extract the main point or topic of each existing paragraph.
-          3. If the text is incomplete (e.g., only an intro), map ONLY that part.
-          
-          [Genre-Specific Analysis]:
-          - IF Argumentative: Focus on logical flow (Introduction -> Argument -> Evidence).
-          - IF Creative: Focus on **Narrative Flow & Consistency**.
-            * Check if scene transitions are smooth.
-            * Check for **Logical Gaps** in the plot (e.g., teleporting characters, unexplained events).
-            * Check for **Character Consistency** (actions matching personality).
+          [Goal]: Dissect the text into its structural components (Skeleton View).
+          [Role]: Structural Architect.
 
-          [Output]:
-          - Use a hierarchical list (Markdown bullets).
-          - (Creative) **서사 흐름 (Narrative Flow)**: [Scene 1] -> [Scene 2] ...
-          - (Creative) **개연성 점검 (Consistency Check)**: Point out any gaps if found.
-          - (Optional) **제안 (Suggestion)**: ...
+          [Analysis Criteria - Genre Specific]:
+          - **Argumentative**: Identify [Intro], [Claim], [Evidence], [Warrant], [Conclusion].
+          - **Creative**: Identify [Setup], [Inciting Incident], [Rising Action], [Climax], [Resolution].
+
+          [Output Format]: Concise Markdown.
+
+          ### 1. 🏗️ 구조 분석 
+          - Don't just summarize. **Label the role** of each part.
+          - **[Intro]**: Key Topic
+          - **[Body 1]**: Main Argument + Evidence
+          - **[Body 2]**: Counter-argument (if present)
+          - ...
+
+          ### 2. 🔭 흐름 및 개연성 진단 
+          - **(Genre-Specific)**: Evaluate the logical or narrative link between the blocks above.
+          - (Argumentative): "The logical leap from Body 1 to Body 2 is too wide."
+          - (Creative): "The transition to the Climax feels earned/sudden."
+
+          ### 3. 🤔 심화 질문 
+          - Ask ONE thought-provoking question to strengthen the structure.
+          - e.g., "Would placing the strongest evidence last maximize impact?"
+
+          [Constraint]: Be objective. Analyze only existing text.
           [Language]: Respond in Korean.
         `.trim()
             };
-        case 'S2_EVIDENCE_SUPPORT':
-            return {
-                id: 'S2_EVIDENCE_SUPPORT',
-                uiMessage: '📚 근거 보강 (Evidence Support)',
-                systemInstruction: `
-          [Goal]: Strengthen arguments with evidence.
-          [Action]: Identify claims in the text that lack sufficient evidence. Provide reliable real-time data and sources to support these claims.
-          [Output]: List the claims and corresponding suggested evidence with citations using Markdown bullets.
-          [Language]: Respond in Korean.
-        `.trim()
-            };
+
         case 'S2_TONE_REFINEMENT':
             return {
                 id: 'S2_TONE_REFINEMENT',
                 uiMessage: '🎨 어조 다듬기 (Tone Refinement)',
                 systemInstruction: `
-          [Goal]: Refine tone and style.
-          [Action]: Analyze the tone of the text. Identify inconsistencies or inappropriate language (e.g., too informal, too aggressive). Suggest a more consistent and appropriate tone.
-          [Output]: Provide an analysis of the current tone and 2-3 rewritten examples for key sentences.
+          [Goal]: Refine tone/style (Genre-Adaptive).
+          [Role]: Style Editor.
+
+          [Analysis Criteria - Genre Specific]:
+          - **Argumentative**: Authority, Objectivity, Clarity. (Avoid weak hedging like "I think...").
+          - **Creative**: Atmosphere, Character Voice, Sensory Details. (Avoid sterile reporting).
+
+          [Output Format]: Concise Markdown.
+
+          ### 1. 🎨 톤 & 매너 진단
+          - Analyze the tone of the text. Identify inconsistencies or inappropriate language.
+
+          ### 2. 🖌️ 수정 제안
+          - Select 1-2 weak sentences.
+          - **기존 문장**: "..."
+          - **수정 문장**: "..."
+          - *Reason*: "Changed passive voice to active to sound more confident."
+
+          [Constraint]: Be specific. Analyze existing text only.
           [Language]: Respond in Korean.
         `.trim()
             };
