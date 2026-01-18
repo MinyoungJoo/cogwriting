@@ -214,7 +214,7 @@ export default function Editor() {
     return (
         <LexicalComposer initialConfig={initialConfig}>
             <div className="relative h-full flex flex-col bg-white rounded-lg shadow-sm border border-gray-200">
-                {systemMode !== 's2' && <IdeaSparkPlugin />}
+                <IdeaSparkPlugin />
                 {systemMode !== 's1' && <StruggleNudge />}
                 <GoalHeader />
                 <WritingPromptOverlay />

@@ -196,14 +196,14 @@ export default function IdeaSparkPlugin() {
         position: 'fixed',
         top: '80px',
         right: '420px',
-        zIndex: 50
+        zIndex: 9999
     };
 
     return createPortal(
         <div
             ref={menuRef}
             style={FIXED_STYLE}
-            className="flex flex-col w-[260px] bg-gray-900 border border-gray-700 rounded-lg shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-2 duration-300"
+            className="flex flex-col w-[220px] bg-gray-900 border border-gray-700 rounded-lg shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-2 duration-300"
         >
             {/* Header */}
             <div className="flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-700">
@@ -225,19 +225,16 @@ export default function IdeaSparkPlugin() {
                 {/* 1. Nudge UI */}
                 {showNudgeUI && (
                     <>
-                        <div className="text-sm text-gray-200 font-medium mb-1">
-                            아이디어가 필요하신가요?
+                        <div className="text-sm text-gray-200 font-medium mb-3 text-center">
+                            창의적인 영감이 필요하신가요?
                         </div>
-                        <div className="text-xs text-gray-500 mb-3 leading-relaxed">
-                            SCAMPER 기법으로<br />
-                            새로운 발상을 도와드립니다.
-                        </div>
+
                         <button
                             onClick={handleNudgeClick}
                             className="w-full py-1.5 px-3 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded transition-colors flex items-center justify-center gap-1"
                         >
                             <Lightbulb size={12} />
-                            아이디어 제안 받기
+                            새로운 관점 얻기
                         </button>
                     </>
                 )}

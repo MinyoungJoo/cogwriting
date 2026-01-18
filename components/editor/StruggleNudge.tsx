@@ -162,14 +162,14 @@ export const StruggleNudge = () => {
         <div
             style={{
                 position: 'fixed',
-                top: '72px',
-                right: '60px',
+                top: '50px',
+                right: '120px',
                 zIndex: 9999
             }}
-            className="flex flex-col w-[260px] bg-gray-900 border border-gray-700 rounded-xl shadow-2xl overflow-hidden"
+            className="flex flex-col w-[220px] bg-gray-900 border border-gray-700 rounded-xl shadow-2xl overflow-hidden"
         >
             {/* Header */}
-            <div className="flex items-center justify-between p-2.5 bg-gray-800 border-b border-gray-700">
+            < div className="flex items-center justify-between p-2.5 bg-gray-800 border-b border-gray-700" >
                 <div className="flex items-center gap-2">
                     <Search size={14} className={showNudgeUI ? "text-amber-500" : "text-blue-500"} />
                     <span className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">
@@ -181,14 +181,12 @@ export const StruggleNudge = () => {
                 </button>
             </div >
 
-            <div className="p-4">
+            <div className="p-3">
                 {/* 1. Nudge UI (Initial Alert) */}
                 {showNudgeUI && (
                     <>
-                        <div className="text-sm text-gray-200 font-medium mb-1">도움이 필요하신가요?</div>
-                        <div className="text-xs text-gray-500 mb-4 leading-relaxed">
-                            AI가 현재 문맥을 분석하여<br />문제점을 진단해 드립니다.
-                        </div>
+                        <div className="text-sm text-gray-200 font-medium mb-3 text-center">성찰적 피드백이 필요하신가요?</div>
+
                         <button
                             onClick={() => {
                                 editor.getEditorState().read(() => {
@@ -257,10 +255,10 @@ export const StruggleNudge = () => {
                                     }, 'S2_DIAGNOSIS');
                                 });
                             }}
-                            className="w-full py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1"
+                            className="w-full py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1"
                         >
                             <Search size={12} />
-                            글 진단 받기
+                            내 글 진단하기
                         </button>
                     </>
                 )}

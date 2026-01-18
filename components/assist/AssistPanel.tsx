@@ -1,6 +1,48 @@
 import useStore from '@/store/useStore';
 import { api } from '@/src/lib/api';
-import { Sparkles, Send, MessageSquare, Search, LayoutList, UserCheck, BookOpen, Palette, Play, FileText, Wrench } from 'lucide-react';
+import { Sparkles, Send, MessageSquare, Search, LayoutList, UserCheck, BookOpen, Palette, Play, FileText, Wrench, Copy, Check } from 'lucide-react';
+
+// ... (existing imports)
+
+// Helper component for Copy functionality
+const CopyablePre = ({ children, ...props }: any) => {
+    const [copied, setCopied] = useState(false);
+
+    // safe extraction of text
+    let textToCopy = '';
+    if (children && typeof children === 'object' && 'props' in children) {
+        textToCopy = children.props.children || '';
+    } else if (Array.isArray(children)) {
+        children.forEach(child => {
+            if (typeof child === 'string') textToCopy += child;
+            else if (child && typeof child === 'object' && 'props' in child) textToCopy += child.props.children;
+        });
+    }
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(String(textToCopy));
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <div className="relative group my-2">
+            <pre className="bg-gray-950 p-3 rounded-lg border border-gray-800 whitespace-pre-wrap break-words text-left" {...props}>
+                {children}
+            </pre>
+            <button
+                onClick={handleCopy}
+                className="absolute top-2 right-2 p-1.5 bg-gray-800 text-gray-400 rounded hover:bg-gray-700 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Copy to clipboard"
+            >
+                {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+            </button>
+        </div>
+    );
+};
+
+
+
 import { useState, useRef, useEffect, Fragment } from 'react';
 import { selectStrategy, getStrategy } from '@/src/lib/strategy';
 import { monitorAgent } from '@/src/lib/MonitorAgent';
@@ -22,7 +64,8 @@ export default function AssistPanel() {
         setStruggleDetected, // Import setStruggleDetected
         setIdeaSparkDetected, // [FIX] Import setIdeaSparkDetected
         unreadDiagnosis, // [NEW] Import unreadDiagnosis
-        markDiagnosisRead // [NEW] Import markDiagnosisRead
+        markDiagnosisRead, // [NEW] Import markDiagnosisRead
+        setInterventionStatus // [NEW] Import setInterventionStatus
     } = useStore();
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -218,13 +261,15 @@ export default function AssistPanel() {
             setStruggleDetected(false); // Force clear conflicting state
             // Reset cooldown to allow immediate trigger
             monitorAgent.resetCooldown('IDEA_SPARK');
-            setIdeaSparkDetected(true); // Show Idea Spark UI
 
-            const payload = monitorAgent.manual_trigger('Help me find ideas');
-            setPendingPayload(payload);
+            // [MODIFIED] User request: Show Nudge first, don't auto-trigger.
+            setInterventionStatus('idle'); // Ensure we are in idle state
+            setIdeaSparkDetected(true); // Show Idea Spark UI (Nudge)
+            useStore.getState().setSuggestionOptions(null); // [FIX] Clear stale results so Nudge can appear
 
-            // Allow UI to position itself (defaulting to center/top if no cursor logic here yet)
-            triggerIntervention(undefined, 'S1_IDEA_SPARK');
+            // [FIX] Ensure icon doesn't stay "pressed"
+            setSelectedStrategy(null);
+
             return;
         }
 
@@ -342,7 +387,15 @@ export default function AssistPanel() {
                                                 li: ({ node, ...props }) => <li className="leading-relaxed" {...props} />,
                                                 p: ({ node, ...props }) => <p className="mb-2 last:mb-0 leading-relaxed" {...props} />,
                                                 strong: ({ node, ...props }) => <strong className="font-bold text-white" {...props} />,
-                                                code: ({ node, ...props }) => <code className="bg-gray-900 px-1 py-0.5 rounded text-xs font-mono" {...props} />,
+                                                pre: CopyablePre,
+                                                code: ({ node, ...props }) => {
+                                                    const isInline = !String(props.className).includes('language-');
+                                                    if (isInline) {
+                                                        return <code className="bg-gray-900 px-1 py-0.5 rounded text-xs font-mono text-blue-200" {...props} />;
+                                                    }
+                                                    return <code className="font-mono text-sm" {...props} />;
+                                                },
+
                                             }}
                                         >
                                             {msg.content}

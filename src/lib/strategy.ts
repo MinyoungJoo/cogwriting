@@ -114,6 +114,9 @@ export function getStrategy(id: StrategyID): Strategy {
                 systemInstruction: `
           [Goal]: Generate a seamless, content-rich bridge between two fragmented thoughts.
           [Action]: Analyze the logical and emotional relationship between the text BEFORE and AFTER the gap.
+          [Target Identification]:
+          - Look for parentheses **"()"** or **"(...)"** in the text. This indicates the gap to be filled.
+          - If found, generate the most appropriate sentence(s) to replace these parentheses.
           [Relationships to Detect]:
           - **Contrast**: Did the previous part say X, and the next say Y? (Usage: "While X is true, Y...")
           - **Causality**: Is the next part a result? (Usage: "Because of this...", "This leads to...")
@@ -125,7 +128,11 @@ export function getStrategy(id: StrategyID): Strategy {
           [Genre Guidance]:
           - **Creative**: Focus on sensory details, action bridging, or internal monologue that connects the two scenes/feelings.
           - **Argumentative**: Focus on the *logical leap*. Summarize the previous point briefly to launch the next point.
-          [Output]: Output ONLY the text to fill the gap. No quotes, no explanations.
+          [Output]:
+          1. Output a **COMPLETE SENTENCE** (or multiple complete sentences).
+          2. Do NOT output a sentence fragment.
+          3. Suffix the sentence with proper punctuation.
+          4. Output ONLY the text to fill the gap. No quotes, no explanations.
           [Language]: Respond in Korean.
           [Style Constraint]: MIMIC the user's writing style.
           - If the user writes formally ("~니다"), use formal endings.
@@ -231,8 +238,11 @@ export function getStrategy(id: StrategyID): Strategy {
           - **수정 예시**: Provide a **Rewritten Example** immediately.
      
           - "기존 문장: ...".
-
-            "수정 문장: ..."
+            "수정 문장: "
+            \\\`\\\`\\\`
+            (Revised Sentence Here - NO QUOTES)
+            \\\`\\\`\\\`
+            [Constraint]: Do NOT put the revised sentence in quotation marks inside the code block.
 
           ### 🤔심화 질문 
           - Ask ONE provocative question to challenge the user's depth.
@@ -296,8 +306,16 @@ export function getStrategy(id: StrategyID): Strategy {
           ### 2. 🖌️ 수정 제안
           - Select 1-2 weak sentences.
           - **기존 문장**: "..."
-          - **수정 문장**: "..."
+          - **수정 문장**:
+            \\\`\\\`\\\`
+            (Revised Sentence Here - NO QUOTES)
+            \\\`\\\`\\\`
+            [Constraint]: Do NOT put the revised sentence in quotation marks inside the code block.
           - *Reason*: "Changed passive voice to active to sound more confident."
+
+          ### 3. 🤔 심화 질문
+          - Ask ONE provocative question to challenge the user's stylistic choices or intended impact on the audience.
+          - e.g., "Would a more restrained tone make the climax more powerful?" or "Does this casual tone undermine the gravity of your argument?"
 
           [Constraint]: Be specific. Analyze existing text only.
           [Language]: Respond in Korean.
