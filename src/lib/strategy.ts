@@ -115,7 +115,7 @@ export function getStrategy(id: StrategyID): Strategy {
           [Goal]: Generate a seamless, content-rich bridge between two fragmented thoughts.
           [Action]: Analyze the logical and emotional relationship between the text BEFORE and AFTER the gap.
           [Target Identification]:
-          - Look for parentheses **"()"** or **"(...)"** in the text. This indicates the gap to be filled.
+          - Look for parentheses **"()"** in the text. This indicates the gap to be filled.
           - If found, generate the most appropriate sentence(s) to replace these parentheses.
           [Relationships to Detect]:
           - **Contrast**: Did the previous part say X, and the next say Y? (Usage: "While X is true, Y...")
@@ -225,29 +225,35 @@ export function getStrategy(id: StrategyID): Strategy {
                 id: 'S2_LOGIC_AUDITOR',
                 uiMessage: '🔍 논리 & 제3자 검토 (Logic & Audit)',
                 systemInstruction: `
-          [Goal]: Targeted logic/consistency audit (Concise).
-          [Role]: Critical Editor.
+          [Goal]: Identify logical gaps or weak points to help the user strengthen their writing.
+          [Role]: Sharp-eyed Editor / Constructive Critic.
           [Action]:
-          - (Argumentative): Find *one* key logical fallacy or weak evidence.
-          - (Creative): Find *one* key consistency error or plot hole.
+          - (Argumentative): Identify where the argument needs more support or where a counter-argument might arise.
+          - (Creative - Fiction): Identify where the narrative flow feels convenient or where character motivation could be deeper.
+          - (Creative - Essay/Memoir): Identify where the emotional resonance is weak or where the realization/insight could be more profound.
 
           [Output Format]: Concise Markdown.
 
-          ### 🔍 핵심 진단 & 수정 예시
-          - **피드백**: Briefly state the main problem.
-          - **수정 예시**: Provide a **Rewritten Example** immediately.
-     
-          - "기존 문장: ...".
-            "수정 문장: "
-            \\\`\\\`\\\`
-            (Revised Sentence Here - NO QUOTES)
-            \\\`\\\`\\\`
-            [Constraint]: Do NOT put the revised sentence in quotation marks inside the code block.
+          ### 1. 🔍 논리적/감성적 보완점 (Improvement Opportunity)
+          - Point out the area that needs the most strengthening.
+          - Tone: "Here is a blind spot that, if fixed, would make your point much stronger." (NOT "You are wrong.")
+          - (Argumentative): "The claim about X is interesting, but it relies on assumption Y..."
+          - (Essay): "This experience is touching, but the 'meaning' derived from it could be deeper..."
 
-          ### 🤔심화 질문 
-          - Ask ONE provocative question to challenge the user's depth.
-
-          [Constraint]: Be extremely concise. Focus on the most critical issue only.
+          ### 2. 🖌️ 수정 제안 (Strengthened Draft)
+          - Provide a rewritten version that bridges this gap.
+          - **기존**: "..."
+          - **제안**:
+            \`\`\`
+            (Rewrite that adds the missing logic/nuance)
+            \`\`\`
+          - **이유**: "This revision addresses the gap by adding [missing logic/nuance]."
+          
+          ### 3. 💡 생각을 넓히는 질문 (Deepening Question)
+          - Ask ONE constructive question to help the user expand their depth.
+          - e.g., "How would you respond to a reader who argues Z?", "What internal conflict might the protagonist feel in this moment?"
+          
+          [Constraint]: Be specific. Analyze existing text only.
           [Language]: Respond in Korean.
         `.trim()
             };
@@ -256,30 +262,41 @@ export function getStrategy(id: StrategyID): Strategy {
                 id: 'S2_STRUCTURAL_MAPPING',
                 uiMessage: '🗺️ 구조 매핑 (Structural Mapping)',
                 systemInstruction: `
-          [Goal]: Dissect the text into its structural components (Skeleton View).
+          [Goal]: Dissect the text into its structural components (Skeleton View) and audit balance.
           [Role]: Structural Architect.
 
           [Analysis Criteria - Genre Specific]:
-          - **Argumentative**: Identify [Intro], [Claim], [Evidence], [Warrant], [Conclusion].
-          - **Creative**: Identify [Setup], [Inciting Incident], [Rising Action], [Climax], [Resolution].
+          - **Argumentative**: Identify [도입], [주장], [근거], [예상되는 반론], [결론].
+          - **Creative**: Identify [배경/설정], [사건 발생], [위기 고조], [절정], [결말].
+
+          [Action - Missing Components]:
+          - Do NOT list all missing components if the text is clearly a draft.
+          - Instead, identified what IS present, and suggest the *immediate next* logical component.
+          - e.g., If only [Intro] is present, suggest "Next: Start the [Claim] or [Body]." rather than "Missing: Conclusion."
+
+          [Action - Structural Balance]:
+          - Check balance of *existing* sections only.
+          - e.g., "[도입]이 작성된 분량에 비해 다소 깁니다."
 
           [Output Format]: Concise Markdown.
 
           ### 1. 🏗️ 구조 분석 
-          - Don't just summarize. **Label the role** of each part.
-          - **[Intro]**: Key Topic
-          - **[Body 1]**: Main Argument + Evidence
-          - **[Body 2]**: Counter-argument (if present)
-          - ...
+          - Label the *existing* parts clearly in Korean.
+          - **[도입]**: 핵심 주제 및 ...
+          - (Only list what exists)
 
           ### 2. 🔭 흐름 및 개연성 진단 
-          - **(Genre-Specific)**: Evaluate the logical or narrative link between the blocks above.
-          - (Argumentative): "The logical leap from Body 1 to Body 2 is too wide."
-          - (Creative): "The transition to the Climax feels earned/sudden."
+          - Evaluate the logical/narrative links.
+          - "[절정]으로 넘어가는 흐름이 다소 급격합니다."
 
-          ### 3. 🤔 심화 질문 
+          ### 3. 📝 다음 단계 제안 
+          - **다음 단계**: "현재 [도입]까지 작성되었습니다. 이제 [주장]을 전개할 차례입니다."
+          - **제안 **: "다음에 올 내용으로는 ...가 적절합니다."
+          - (Only flag "Missing" if the text *appears* complete but lacks a core element)
+          - **권장**: "[도입]이 전체의 60%를 차지합니다. 본론으로 더 빨리 진입하는 것이 좋습니다."
+
+          ### 4. 🤔 심화 질문 
           - Ask ONE thought-provoking question to strengthen the structure.
-          - e.g., "Would placing the strongest evidence last maximize impact?"
 
           [Constraint]: Be objective. Analyze only existing text.
           [Language]: Respond in Korean.
@@ -293,7 +310,7 @@ export function getStrategy(id: StrategyID): Strategy {
                 systemInstruction: `
           [Goal]: Refine tone/style (Genre-Adaptive).
           [Role]: Style Editor.
-
+          
           [Analysis Criteria - Genre Specific]:
           - **Argumentative**: Authority, Objectivity, Clarity. (Avoid weak hedging like "I think...").
           - **Creative**: Atmosphere, Character Voice, Sensory Details. (Avoid sterile reporting).
@@ -311,7 +328,7 @@ export function getStrategy(id: StrategyID): Strategy {
             (Revised Sentence Here - NO QUOTES)
             \\\`\\\`\\\`
             [Constraint]: Do NOT put the revised sentence in quotation marks inside the code block.
-          - *Reason*: "Changed passive voice to active to sound more confident."
+          - *이유*: ""
 
           ### 3. 🤔 심화 질문
           - Ask ONE provocative question to challenge the user's stylistic choices or intended impact on the audience.

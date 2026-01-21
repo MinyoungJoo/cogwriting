@@ -24,6 +24,7 @@ export default function IdeaSparkPlugin() {
     const ghostTextReplacementLength = useStore(state => state.ghostTextReplacementLength);
     const setGhostTextPosition = useStore(state => state.setGhostTextPosition);
     const setGhostTextReplacementLength = useStore(state => state.setGhostTextReplacementLength);
+    const setSelectedStrategy = useStore(state => state.setSelectedStrategy); // [NEW]
     const isStruggleDetected = useStore(state => state.isStruggleDetected); // Mutual exclusion check
 
     const [coords, setCoords] = useState<{ x: number; y: number } | null>(null);
@@ -141,7 +142,7 @@ export default function IdeaSparkPlugin() {
     };
 
     const handleNudgeClick = () => {
-        setIdeaSparkDetected(false); // Hide Nudge
+        // setIdeaSparkDetected(false); // [FIX] Don't hide nudge immediately
         triggerIntervention(undefined, 'S1_IDEA_SPARK'); // Start API call -> sets interventionStatus to 'requesting'
     };
 
@@ -166,6 +167,7 @@ export default function IdeaSparkPlugin() {
         setSuggestionOptions(null);
         setInterventionStatus('idle');
         setCoords(null);
+        setSelectedStrategy(null); // [FIX] Reset toolbar state
 
         // [FIX] Add cooldown on close to prevent immediate re-trigger
         monitorAgent.extendCooldown('IDEA_SPARK', 60);
@@ -194,8 +196,8 @@ export default function IdeaSparkPlugin() {
     // Chat window is 400px wide. We place this 420px from right.
     const FIXED_STYLE: React.CSSProperties = {
         position: 'fixed',
-        top: '80px',
-        right: '420px',
+        top: '10px',
+        right: '400px', // [MODIFIED] Overlapping header/save button area as requested
         zIndex: 9999
     };
 

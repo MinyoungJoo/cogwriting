@@ -274,39 +274,38 @@ export class MonitorAgent {
             return false;
         };
 
-
-        // 1. Struggle Detection (New Logic)
-        // Window: Last 100 keystrokes
-        // Condition: Revision Ratio < 0.6 AND Idle >= 4.0s
+        // 1. Struggle Detection (Refined) - DISABLED (User Request)
+        // Trigger: Pause > 5s AND Document Length >= 100 AND Cursor at Start of Block (Pos 0)
+        // User Request: "When cursor pos drops to 0 (New Paragraph) and 5s idle"
+        /* 
         if (idle_time >= 5.0) {
-            const WINDOW_SIZE = 100;
-            const recent = this.recent_keystrokes.slice(-WINDOW_SIZE);
-
-            // Debug Log
-            // console.log(`[Monitor] Idle: ${idle_time.toFixed(1)}s, Keystrokes: ${recent.length}/${WINDOW_SIZE}`);
-
-            // [MODIFIED] Condition: Activate if Document Length >= 100 characters
+            // Note: cursor_index comes from selection.anchorOffset. 
+            // In Lexical, this is often relative to the current TextNode/Block.
+            // If it is 0, it means we are at the start of a block (e.g. new paragraph).
             if (this.current_text.length >= 100) {
-                const backspaceCount = recent.filter(k => k.type === 'BACKSPACE').length;
-                const nonCharCount = recent.filter(k => k.type === 'SPACE' || k.type === 'ENTER').length;
-
-                // Revision Ratio Calculation
-                // Use actual sample size if less than WINDOW_SIZE to avoid division by zero or skewed results
-                const totalSample = recent.length > 0 ? recent.length : 1;
-
-                // Effective Contribution = Total - (BS * 2) - NonChar
-                const effectiveContribution = totalSample - (backspaceCount * 2) - nonCharCount;
-                const revisionRatio = (effectiveContribution + nonCharCount) / totalSample;
-
-                // console.log(`[Monitor] Revision Ratio: ${revisionRatio.toFixed(2)} (Threshold: 0.6)`);
-
-                // Condition: Efficiency < 60%
-                if (revisionRatio < 0.6) {
+                if (this.cursor_index === 0) {
                     if (checkCooldown('STRUGGLE_DETECTION', 60)) {
-                        console.log(`[Monitor] Struggle Detected! Ratio: ${revisionRatio.toFixed(2)}`);
-                        // Prevent Idea Spark from triggering immediately after
+                        console.log(`[Monitor] Struggle Detected! (Idle: ${idle_time.toFixed(1)}s, Cursor: 0)`);
                         return this.create_payload('STRUGGLE_DETECTION');
                     }
+                }
+            }
+        }
+        */
+
+        // 2. Active Struggle (Revision Ratio)
+        // Trigger: High edit ratio in recent window
+        // Criteria: Revision Ratio < 0.4 (40% efficiency) over last 70 keystrokes
+        const revisionLimit = 0.4;
+        const revisionWindow = 70;
+
+        // Ensure user has PAUSED (to reflect) and has enough data and text length
+        if (idle_time >= 5.0 && this.recent_keystrokes.length >= revisionWindow && this.current_text.length >= 100) {
+            const ratio = this.getRevisionRatio(revisionWindow);
+            if (ratio < revisionLimit) {
+                if (checkCooldown('STRUGGLE_DETECTION', 60)) { // Shared cooldown with idle trigger
+                    console.log(`[Monitor] Active Struggle Detected! (Ratio: ${ratio.toFixed(2)}, Window: ${revisionWindow})`);
+                    return this.create_payload('STRUGGLE_DETECTION');
                 }
             }
         }
@@ -436,11 +435,10 @@ export class MonitorAgent {
         return total_count > 0 ? (edit_count / total_count) : 0;
     }
 
-    public getRevisionRatio() {
-        // Window: Last 100 keystrokes
-        const WINDOW_SIZE = 100;
-        // Get last 100 keystrokes (no time pruning for this metric, just last N actions)
-        const recent = this.recent_keystrokes.slice(-WINDOW_SIZE);
+    public getRevisionRatio(windowSize: number = 100) {
+        // Window: Last N keystrokes
+        // Get last N keystrokes (no time pruning for this metric, just last N actions)
+        const recent = this.recent_keystrokes.slice(-windowSize);
 
         if (recent.length === 0) return 1.0; // Default to 100% efficiency if no data
 

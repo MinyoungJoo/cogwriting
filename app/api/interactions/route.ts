@@ -32,3 +32,29 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: `Failed to save interaction: ${(error as Error).message}` }, { status: 500 });
     }
 }
+
+export async function PATCH(request: Request) {
+    try {
+        const body = await request.json();
+        const { interaction_id, ...updateData } = body;
+
+        if (!interaction_id) {
+            return NextResponse.json({ error: 'Missing interaction_id' }, { status: 400 });
+        }
+
+        await dbConnect();
+        const interaction = await Interaction.findByIdAndUpdate(
+            interaction_id,
+            { $set: updateData },
+            { new: true }
+        );
+
+        if (!interaction) {
+            return NextResponse.json({ error: 'Interaction not found' }, { status: 404 });
+        }
+
+        return NextResponse.json(interaction);
+    } catch (error) {
+        return NextResponse.json({ error: 'Failed to update interaction' }, { status: 500 });
+    }
+}

@@ -47,6 +47,7 @@ interface AppState {
     isIdeaSparkDetected: boolean;
     setIdeaSparkDetected: (detected: boolean) => void;
     pendingPayload: MonitorPayload | null;
+    currentInteractionId: string | null; // [NEW] Track current interaction ID
 
     // Detailed Metrics
     docLength: number;
@@ -241,11 +242,18 @@ const useStore = create<AppState>()(persist((set, get) => ({
                     break;
             }
 
+            // [NEW] Log Action
+            const interactionId = get().currentInteractionId;
+            if (interactionId) {
+                api.logs.updateInteraction(interactionId, { user_action: 'ACCEPT' }).catch(e => console.error(e));
+            }
+
             set({
                 selectedStrategy: targetStrategy,
                 isStruggleDetected: false,
                 struggleDiagnosis: null,
-                interventionStatus: 'idle'
+                interventionStatus: 'idle',
+                currentInteractionId: null // Reset
             });
 
             addChatMessage({
@@ -273,6 +281,12 @@ const useStore = create<AppState>()(persist((set, get) => ({
         const { struggleDiagnosis, addChatMessage, triggerIntervention } = get();
         if (struggleDiagnosis && types.length > 0) {
             monitorAgent.extendCooldown('STRUGGLE_DETECTION', 60);
+
+            // [NEW] Log Action
+            const interactionId = get().currentInteractionId;
+            if (interactionId) {
+                api.logs.updateInteraction(interactionId, { user_action: 'ACCEPT', ai_response: { accepted_types: types } }).catch(e => console.error(e));
+            }
 
             const strategiesToTrigger: { id: StrategyID, text: string, name: string }[] = [];
 
@@ -346,6 +360,7 @@ const useStore = create<AppState>()(persist((set, get) => ({
     isIdeaSparkDetected: false,
     setIdeaSparkDetected: (detected) => set({ isIdeaSparkDetected: detected }),
     pendingPayload: null,
+    currentInteractionId: null,
 
     docLength: 0,
     pauseDuration: 0,
@@ -528,29 +543,33 @@ const useStore = create<AppState>()(persist((set, get) => ({
         payload = { ...payload, ...metaContext };
 
         try {
-            // Log Interaction Start
+            // [NEW] Save Interaction ID Check
+            let savedInteractionId = null;
             const sessionId = get().sessionId;
+
             if (sessionId) {
                 try {
                     const pending = get().pendingPayload;
                     const isSystemInitiated = pending && (pending.trigger_reason === 'IDEA_SPARK' || pending.trigger_reason === 'STRUGGLE_DETECTION');
 
-                    api.logs.saveInteraction({
+                    const saved = await api.logs.saveInteraction({
                         session_id: sessionId,
                         participant_id: get().participantId || 'anonymous',
                         cognitive_type: strategyIdToUse.startsWith('S1') ? 'S1' : 'S2',
                         initiative: isSystemInitiated ? 'System' : 'User',
                         feature_type: strategyIdToUse,
-                        writing_context: get().content, // [NEW] Full Text
-                        focal_segment: payload.target_text || '', // [NEW] Segment
-                        ai_response: null, // Initial request has no response yet, updated later via PATCH if needed
+                        writing_context: get().content,
+                        focal_segment: payload.target_text || '',
+                        ai_response: null,
                         trigger_metrics: {
                             revision_ratio: get().revisionRatio,
                             pause_duration: payload.stuck_duration || 0,
                             cpm: (get().cpm || 0)
                         },
-                        user_action: 'IGNORE' // Default state until user reacts
+                        user_action: 'IGNORE'
                     });
+                    savedInteractionId = saved._id;
+                    set({ currentInteractionId: savedInteractionId });
                 } catch (e) {
                     console.error('Failed to log interaction start', e);
                 }
@@ -562,7 +581,7 @@ const useStore = create<AppState>()(persist((set, get) => ({
                 body: JSON.stringify({
                     messages: [],
                     ...payload,
-                    strategy_id: strategy.id, // Ensure consistent naming (API uses strategy_id)
+                    strategy_id: strategy.id,
                     system_instruction: strategy.systemInstruction,
                     context_data: {
                         fullText: get().content,
@@ -654,7 +673,9 @@ const useStore = create<AppState>()(persist((set, get) => ({
                     strategy: strategy.id
                 }, strategy.id);
 
-                // [NEW] Persist AI Message to DB (for triggers outside AssistPanel like SelectionMenu/Nudges)
+                // [NEW] Persist AI Message to DB
+                // Need to use savedInteractionId if possible, or create new log
+                // The chat log is separate but linked by session.
                 const sessionId = get().sessionId;
                 const participantId = get().participantId;
                 if (sessionId) {
@@ -674,11 +695,10 @@ const useStore = create<AppState>()(persist((set, get) => ({
                 if (['S1_PARAPHRASING', 'S1_GAP_FILLING', 'S1_IDEA_EXPANSION', 'S1_PATTERN_BREAKER', 'S1_DRAFTING'].includes(strategy.id)) {
                     let replacement = data.replacement_text;
                     if (!replacement && typeof content === 'string') {
-                        // Fallback: Use content but strip quotes or markdown or parentheses if needed
+                        // Fallback
                         replacement = content.replace(/^["'(\[]|["')\]]$/g, '').trim();
                     }
                     if (replacement) {
-                        // set({ ghostText: replacement });
                         get().addToHistory(replacement);
                     }
                 }
@@ -689,14 +709,12 @@ const useStore = create<AppState>()(persist((set, get) => ({
                     // Try parsing if it's a string
                     if (typeof options === 'string') {
                         try {
-                            // Check if it looks like JSON
                             if (options.trim().startsWith('[') || options.trim().startsWith('{')) {
                                 const parsed = JSON.parse(options);
                                 options = parsed.suggestion_options || parsed.content || parsed;
                             }
                         } catch (e) {
                             console.warn('[Store] Failed to parse Idea Spark options JSON', e);
-                            // Fallback: If it's a newline separated string, split it
                             if (options.includes('\n')) {
                                 options = options.split('\n').filter((s: string) => s.trim().length > 0);
                             } else {
@@ -706,13 +724,11 @@ const useStore = create<AppState>()(persist((set, get) => ({
                     }
 
                     if (Array.isArray(options)) {
-                        // Clean up strings (remove leading numbers like "1. ", "- ")
                         const cleaned = options.map((opt: any) =>
                             typeof opt === 'string' ? opt.replace(/^\d+[\.\)]\s*|-\s*/, '').trim() : JSON.stringify(opt)
                         );
                         set({ suggestionOptions: cleaned });
                     } else if (typeof options === 'object' && options !== null) {
-                        // If it's an object but not array, maybe values?
                         set({ suggestionOptions: Object.values(options).map(String) });
                     } else if (options) {
                         set({ suggestionOptions: [String(options)] });

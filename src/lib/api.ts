@@ -82,6 +82,15 @@ export const api = {
             }
             return res.json();
         },
+        updateInteraction: async (id: string, updates: any) => {
+            const res = await fetch('/api/interactions', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ interaction_id: id, ...updates }),
+            });
+            if (!res.ok) throw new Error('Failed to update interaction');
+            return res.json();
+        },
         saveChatLog: async (data: any) => {
             const res = await fetch('/api/chat-logs', {
                 method: 'POST',

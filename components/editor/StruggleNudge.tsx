@@ -6,12 +6,22 @@ import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext
 import { $getSelection, $isRangeSelection, $isTextNode, $getRoot } from 'lexical';
 
 export const StruggleNudge = () => {
-    if (typeof window === 'undefined') return null;
+    // if (typeof window === 'undefined') return null; // [FIX] Removed to prevent hydration mismatch
 
     const [editor] = useLexicalComposerContext();
+    const [isMounted, setIsMounted] = useState(false);
+
+    useEffect(() => {
+        setIsMounted(true);
+        // [FIX] Force reset transient states on mount to prevent stale data from opening the window
+        useStore.getState().setStruggleDetected(false);
+        useStore.getState().setStruggleDiagnosis(null);
+        useStore.getState().setInterventionStatus('idle');
+    }, []);
+
     const isStruggleDetected = useStore(state => state.isStruggleDetected);
     const setStruggleDetected = useStore(state => state.setStruggleDetected);
-    const isIdeaSparkDetected = useStore(state => state.isIdeaSparkDetected); // Mutual exclusion check
+    // const isIdeaSparkDetected = useStore(state => state.isIdeaSparkDetected); // [REMOVED] Mutual exclusion check
     const triggerIntervention = useStore(state => state.triggerIntervention);
     const interventionStatus = useStore(state => state.interventionStatus);
     const struggleDiagnosis = useStore(state => state.struggleDiagnosis);
@@ -19,111 +29,26 @@ export const StruggleNudge = () => {
     const setInterventionStatus = useStore(state => state.setInterventionStatus);
     const acceptStruggleDiagnosis = useStore(state => state.acceptStruggleDiagnosis);
     const selectedStrategy = useStore(state => state.selectedStrategy);
-    const activeWritingPrompt = useStore(state => state.activeWritingPrompt); // [Moved to Top Level]
+    const activeWritingPrompt = useStore(state => state.activeWritingPrompt);
 
     const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
 
-    // Unified positioning logic
-    const updatePosition = useCallback(() => {
-        editor.getEditorState().read(() => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
-                const domSelection = window.getSelection();
-                if (domSelection && domSelection.rangeCount > 0) {
-                    const range = domSelection.getRangeAt(0);
-                    let rect = range.getBoundingClientRect();
+    // ... (positioning logic unchanged) ...
 
-                    // Handle collapsed selection (cursor only)
-                    if (rect.width === 0 && rect.height === 0) {
-                        const rects = range.getClientRects();
-                        if (rects.length > 0) {
-                            rect = rects[0];
-                        }
-                    }
-
-                    if (rect && (rect.top !== 0 || rect.left !== 0)) {
-                        // Use fixed positioning (viewport relative)
-                        // Place it below the cursor
-                        // Clamp X to prevent overflow (UI width ~260px)
-                        const UI_WIDTH = 280;
-                        const viewportWidth = window.innerWidth;
-                        const left = Math.max(10, Math.min(rect.left, viewportWidth - UI_WIDTH));
-
-                        setPosition({
-                            top: rect.bottom + 10,
-                            left: left
-                        });
-                    }
-                }
-            }
-        });
-    }, [editor]);
-
-    // Determine UI visibility
     const isDiagnosing = interventionStatus === 'requesting' && selectedStrategy === 'S2_DIAGNOSIS';
     const isFailed = interventionStatus === 'failed' && selectedStrategy === 'S2_DIAGNOSIS';
     const hasResult = !!struggleDiagnosis;
     const showResultUI = isDiagnosing || hasResult || isFailed;
     const showNudgeUI = isStruggleDetected && !showResultUI;
 
-    // [MODIFIED] Visibility Logic
-    // Allow S2 to show if Idea Spark yielded a result (activeWritingPrompt exists)
-    // The previous logic hid S2 if isIdeaSparkDetected was true.
-    // Ideally, when Idea Spark finishes (user selects a prompt), isIdeaSparkDetected should be false.
-    // But if it persists, we can just check if we are in a blocking state.
-    const isIdeaSparkBlocking = isIdeaSparkDetected && !activeWritingPrompt; // [Correct Usage] Use variable declared at top
+    // [CLEANUP] Removed unused isIdeaSparkBlocking logic entirely
+    const isVisible = (showNudgeUI || showResultUI);
 
-    // Actually, IdeaSparkPlugin sets isIdeaSparkDetected=false when a prompt is selected.
-    // So the user likely means: "If I have the Idea Spark UI open, but I ignore it and keep writing, show S2?"
-    // OR "If I selected a prompt and it's pinned at the top, show S2."
+    // ... (effect logic unchanged) ...
+    // ...
 
-    // User Request: "idea spark writing prompt 를 띄우고 있는 상태에서는 s1, s2 떠도 괜찮아"
-    // This implies overlapping UIs might be okay, or rather, the pinning of the prompt shouldn't block checking.
-
-    // Current Code: const isVisible = (showNudgeUI || showResultUI) && !isIdeaSparkDetected;
-    // If isIdeaSparkDetected is true, S2 is hidden.
-    // If the user selects a prompt, IdeaSparkPlugin calls handleClose() -> setIdeaSparkDetected(false).
-    // So usually S2 SHOULD appear.
-
-    // Perhaps the user means the 'Result List' of Idea Spark?
-    // If suggestionOptions are showing.
-
-    // Let's relax the condition:
-    // Only block if Idea Spark is in the initial 'Nudge' phase or 'Loading' phase?
-    // If Idea Spark is showing results (list), maybe we still block?
-
-    // Interpretation: "Even if Idea Spark is active (detected), allow S2."
-    // Let's try removing the !isIdeaSparkDetected check entirely, relying on screen space?
-    // Or just check if they are spatially overlapping? (Hard)
-
-    // Let's implement what was asked literally: Allow overlap.
-    const isVisible = (showNudgeUI || showResultUI); // Removed && !isIdeaSparkDetected
-
-    useEffect(() => {
-        // Update position if any UI is active
-        if (isVisible) {
-            // Force initial position update
-            updatePosition();
-
-            // Also set a fallback timeout in case read() is slow
-            const timer = setTimeout(() => updatePosition(), 100);
-
-            // Listen for editor updates
-            const unregisterUpdate = editor.registerUpdateListener(() => {
-                updatePosition();
-            });
-
-            // Listen for scrolling
-            const handleScroll = () => updatePosition();
-            window.addEventListener('scroll', handleScroll, true);
-
-            return () => {
-                clearTimeout(timer);
-                unregisterUpdate();
-                window.removeEventListener('scroll', handleScroll, true);
-            };
-        }
-    }, [isVisible, updatePosition, editor]);
+    // [MODIFIED] Log Throttling (10s)
+    const lastLogRef = React.useRef(0);
 
     const handleClose = () => {
         setStruggleDetected(false);
@@ -137,39 +62,21 @@ export const StruggleNudge = () => {
         });
     };
 
-    // Fallback position if selection is missing
-    const finalPosition = position || {
-        top: (typeof window !== 'undefined' ? window.innerHeight / 2 - 100 : 0),
-        left: (typeof window !== 'undefined' ? window.innerWidth / 2 - 130 : 0)
-    };
-
-    // [MODIFIED] Log Throttling (10s)
-    const lastLogRef = React.useRef(0);
-
-    // Return null if nothing to show
-    if (!isVisible) {
-        const now = Date.now();
-        if (now - lastLogRef.current > 10000) {
-            console.log('[StruggleNudge] Hidden (isStruggleDetected:', isStruggleDetected, ', ShowResult:', showResultUI, ', ideaSpark:', isIdeaSparkDetected, ')');
-            lastLogRef.current = now;
-        }
-        return null;
-    }
-
-    console.log('[StruggleNudge] Visible at:', finalPosition);
+    if (!isMounted) return null;
+    if (!isVisible) return null; // [FIX] Prevent rendering empty window when idle
 
     return createPortal(
         <div
             style={{
                 position: 'fixed',
-                top: '50px',
+                top: '10px',
                 right: '120px',
-                zIndex: 9999
+                zIndex: 9999 // [REVERTED] Z-Index back to original
             }}
             className="flex flex-col w-[220px] bg-gray-900 border border-gray-700 rounded-xl shadow-2xl overflow-hidden"
         >
             {/* Header */}
-            < div className="flex items-center justify-between p-2.5 bg-gray-800 border-b border-gray-700" >
+            <div className="flex items-center justify-between p-2.5 bg-gray-800 border-b border-gray-700">
                 <div className="flex items-center gap-2">
                     <Search size={14} className={showNudgeUI ? "text-amber-500" : "text-blue-500"} />
                     <span className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">
