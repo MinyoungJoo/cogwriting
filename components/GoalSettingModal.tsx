@@ -70,7 +70,7 @@ const GoalSettingModal = () => {
                         <h2 className="text-2xl font-bold text-white">Set Your Writing Goal</h2>
                     </div>
                     <p className="text-gray-400 text-sm">
-                        Define your specific writing goal to calibrate the AI assistant.
+                        Define your specific writing goal to calibrate the AI assistant. 
                     </p>
                 </div>
 

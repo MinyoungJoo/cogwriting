@@ -7,6 +7,7 @@ export interface IKeystrokeLog extends Document {
         k: string;
         type: 'INPUT' | 'DELETE' | 'NC';
         pos: number;
+        len : number;
     }>;
 }
 

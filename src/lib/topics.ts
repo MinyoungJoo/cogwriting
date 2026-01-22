@@ -13,21 +13,21 @@ export const TOPICS: Record<'creative' | 'argumentative', TopicDef[]> = {
             title: 'Personal Experience',
             description: 'Write a movie scenario based on a recent personal experience.',
             prompt: '최근 인상 깊었던 경험은 무엇인가요? 1인칭 주인공 시점의 이야기를 적어보세요.',
-            audience: 'General Audience / Movie Goers'
+            audience: '일반 대중'
         },
         {
             id: 'c_past',
-            title: 'If I could go back in time',
-            description: 'Write a story about going back in time to a specific moment.',
-            prompt: '과거의 순간으로 돌아갈 수 있다면 언제로 돌아가고 싶으신가요? 1인칭 주인공 시점의 이야기로 적어보세요.',
-            audience: 'General Audience / Fiction Readers'
+            title: 'Past or Future Moment',
+            description: 'Write a story about going to a specific moment in the past or future.',
+            prompt: '과거 또는 미래의 순간으로 갈 수 있다면 언제로 가고 싶으신가요? 1인칭 주인공 시점의 이야기로 적어보세요.',
+            audience: '일반 대중'
         },
         {
             id: 'c_superpower',
             title: 'What if I had a superpower?',
             description: 'Write a story about having a superpower for one day.',
             prompt: '하루 동안 내가 원하는 초능력을 가질 수 있다면, 어떤 능력을 갖고 싶으신가요? 1인칭 주인공 시점의 이야기로 적어보세요.',
-            audience: 'General Audience'
+            audience: '일반 대중'
         }
     ],
     argumentative: [
